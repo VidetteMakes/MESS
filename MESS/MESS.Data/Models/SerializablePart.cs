@@ -30,4 +30,14 @@ public class SerializablePart
     /// Gets or sets the collection of production log associations for this serialized part.
     /// </summary>
     public List<ProductionLogPart> ProductionLogParts { get; set; } = [];
+    
+    /// <summary>
+    /// Gets or sets the location id where this part is currently stored.
+    /// </summary>
+    public int? LocationId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the location where this part is currently stored.
+    /// </summary>
+    public Location? Location { get; set; }
 }

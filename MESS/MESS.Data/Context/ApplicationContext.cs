@@ -65,6 +65,11 @@ public class ApplicationContext : DbContext
     /// </summary>
     public virtual DbSet<SerializablePart> SerializableParts { get; set; } = null!;
     
+    /// <summary>
+    /// DbSet for Locations.
+    /// </summary>
+    public DbSet<Location> Locations { get; set; } = null!;
+    
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -103,6 +108,16 @@ public class ApplicationContext : DbContext
             .WithMany(sp => sp.ProductionLogParts)
             .HasForeignKey(plp => plp.SerializablePartId)
             .OnDelete(DeleteBehavior.Restrict);
+        
+        modelBuilder.Entity<Location>()
+            .HasIndex(l => l.Name)
+            .IsUnique();
+        
+        modelBuilder.Entity<SerializablePart>()
+            .HasOne(sp => sp.Location)
+            .WithMany(l => l.SerializableParts)
+            .HasForeignKey(sp => sp.LocationId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
     
     /// <inheritdoc />

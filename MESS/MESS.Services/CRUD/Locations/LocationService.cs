@@ -182,4 +182,71 @@ public class LocationService : ILocationService
             .OrderBy(l => l.Name)
             .ToListAsync();
     }
+    
+    /// <inheritdoc />
+    public async Task<List<LocationDTO>> CreateLocationsAsync(
+        LocationNumberingScheme scheme, 
+        int count, 
+        string? prefix = null)
+    {
+        if (count <= 0) throw new ArgumentException("Count must be positive", nameof(count));
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        // Get current names
+        var existingNames = await context.Locations.Select(l => l.Name).ToListAsync();
+
+        // Determine starting number
+        int start = 0;
+        if (existingNames.Any())
+        {
+            // Try to detect the last used index in the scheme
+            start = DetectNextIndex(existingNames, scheme);
+        }
+
+        var newNames = LocationNameGenerator.Generate(scheme, start, count)
+            .Select(n => string.IsNullOrEmpty(prefix) ? n : prefix + n)
+            .Where(n => !existingNames.Contains(n))  // skip duplicates
+            .ToList();
+
+        var locations = newNames.Select(n => new Location { Name = n }).ToList();
+        context.Locations.AddRange(locations);
+
+        await context.SaveChangesAsync();
+
+        return locations.Select(l => new LocationDTO
+        {
+            Id = l.Id,
+            Name = l.Name,
+            PartCount = 0
+        }).ToList();
+    }
+    
+    private int DetectNextIndex(List<string> names, LocationNumberingScheme scheme)
+    {
+        switch (scheme)
+        {
+            case LocationNumberingScheme.Decimal:
+                return names.Select(n => int.TryParse(n, out var x) ? x : 0).DefaultIfEmpty(0).Max() + 1;
+            case LocationNumberingScheme.Hexadecimal:
+                return names.Select(n => int.TryParse(n, System.Globalization.NumberStyles.HexNumber, null, out var x) ? x : 0)
+                    .DefaultIfEmpty(0).Max() + 1;
+            case LocationNumberingScheme.Alphanumeric:
+                return names.Select(FromAlpha).DefaultIfEmpty(0).Max() + 1;
+            default:
+                return 0;
+        }
+    }
+
+    // Reverse of ToAlpha
+    private static int FromAlpha(string str)
+    {
+        var result = 0;
+        foreach (var c in str.ToUpperInvariant())
+        {
+            result *= 26;
+            result += (c - 'A' + 1);
+        }
+        return result - 1;
+    }
 }

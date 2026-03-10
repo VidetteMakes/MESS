@@ -53,6 +53,83 @@ public class ProductionLogPartService : IProductionLogPartService
             return null;
         }
     }
+    
+    /// <inheritdoc />
+    public async Task<List<int>> GetCurrentAssemblyPartIdsAsync(int rootSerializablePartId)
+    {
+        var result = new HashSet<int>();
+
+        var rootLogId = await GetLatestProductionLogForPartAsync(rootSerializablePartId);
+
+        if (rootLogId == null)
+            return [];
+
+        var installedParts = await GetCurrentInstalledPartIdsForLogAsync(rootLogId.Value);
+
+        foreach (var partId in installedParts)
+        {
+            if (result.Add(partId))
+            {
+                var nestedParts = await GetCurrentAssemblyPartIdsAsync(partId);
+
+                foreach (var nested in nestedParts)
+                    result.Add(nested);
+            }
+        }
+
+        return result.ToList();
+    }
+    
+    /// <summary>
+    /// Retrieves the most recent production log in which the specified part was produced.
+    /// </summary>
+    /// <param name="serializablePartId">The serialized part ID.</param>
+    /// <returns>
+    /// The production log ID if one exists; otherwise null.
+    /// </returns>
+    private async Task<int?> GetLatestProductionLogForPartAsync(int serializablePartId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        return await context.ProductionLogParts
+            .Where(plp =>
+                plp.SerializablePartId == serializablePartId &&
+                plp.OperationType == PartOperationType.Produced)
+            .OrderByDescending(plp => plp.ProductionLogId)
+            .Select(plp => (int?)plp.ProductionLogId)
+            .FirstOrDefaultAsync();
+    }
+    
+    /// <summary>
+    /// Retrieves the set of serialized part IDs currently installed in the assembly
+    /// produced by the specified production log.
+    /// </summary>
+    /// <param name="productionLogId">The production log ID.</param>
+    /// <returns>
+    /// A list of serialized part IDs currently installed in that assembly.
+    /// </returns>
+    private async Task<List<int>> GetCurrentInstalledPartIdsForLogAsync(int productionLogId)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var events = await context.ProductionLogParts
+            .Where(plp => plp.ProductionLogId == productionLogId)
+            .ToListAsync();
+
+        var installed = events
+            .Where(e => e.OperationType == PartOperationType.Installed)
+            .Select(e => e.SerializablePartId)
+            .ToHashSet();
+
+        var removed = events
+            .Where(e => e.OperationType == PartOperationType.Removed)
+            .Select(e => e.SerializablePartId)
+            .ToHashSet();
+
+        installed.ExceptWith(removed);
+
+        return installed.ToList();
+    }
 
     /// <inheritdoc />
     public async Task<bool> CreateAsync(ProductionLogPart productionLogPart)
@@ -181,5 +258,4 @@ public class ProductionLogPartService : IProductionLogPartService
             return false;
         }
     }
-
 }

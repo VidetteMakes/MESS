@@ -70,4 +70,16 @@ public interface IProductionLogPartService
     /// otherwise, <c>false</c> if no matching record was found or an exception occurred.
     /// </returns>
     Task<bool> DeleteAsync(int productionLogId, int serializablePartId, PartOperationType operationType);
+    
+    /// <summary>
+    /// Retrieves the identifiers of all serialized parts that are currently nested
+    /// within the specified root serialized part, including the root itself.
+    /// </summary>
+    /// <param name="rootSerializablePartId">
+    /// The identifier of the root serialized part whose assembly hierarchy should be retrieved.
+    /// </param>
+    /// <returns>
+    /// A list of serialized part identifiers representing the current assembly structure.
+    /// </returns>
+    Task<List<int>> GetCurrentAssemblyPartIdsAsync(int rootSerializablePartId);
 }

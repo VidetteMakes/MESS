@@ -1,0 +1,138 @@
+@using MESS.Blazor.Components.Dialogs
+@using MESS.Services.DTOs.Locations
+@inject Microsoft.FluentUI.AspNetCore.Components.IDialogService DialogService
+
+<MudTd DataLabel="Name">
+    <InputText id="name"
+               @bind-Value="Location.Name"
+               class="form-control"
+               placeholder="Enter location name"
+               @oninput="OnInputChanged" />
+</MudTd>
+
+<MudTd DataLabel="Actions">
+
+    @if (!IsNewLocation)
+    {
+        <div class="save-button-container d-inline">
+            <button class="btn btn-sm btn-success"
+                    @onclick="HandleSubmit"
+                    disabled="@(!IsDirty || isSaving || string.IsNullOrWhiteSpace(Location.Name))"
+                    title="Save">
+
+                <i class="bi bi-floppy"></i>
+
+                @if (IsDirty)
+                {
+                    <span class="red-dot"></span>
+                }
+            </button>
+        </div>
+
+        <button class="btn btn-sm btn-danger ms-2"
+                @onclick="ShowDeleteConfirmation"
+                disabled="@(Location.PartCount > 0)"
+                title="Cannot delete locations containing parts">
+
+            <i class="bi bi-trash"></i>
+        </button>
+    }
+    else
+    {
+        <button class="btn btn-sm btn-primary"
+                @onclick="HandleSubmit"
+                disabled="@(!CanSubmit)"
+                title="Create location">
+
+            <i class="bi bi-plus-lg"></i>
+        </button>
+    }
+
+</MudTd>
+
+@code {
+
+    /// <summary>
+    /// The location associated with this row.
+    /// </summary>
+    [Parameter]
+    public required LocationDTO Location { get; set; }
+
+    /// <summary>
+    /// Callback to notify the parent that this location should be deleted.
+    /// </summary>
+    [Parameter]
+    public EventCallback<LocationDTO> OnDeleteRequested { get; set; }
+
+    /// <summary>
+    /// Event callback triggered when saving/creating the location.
+    /// </summary>
+    [Parameter]
+    public EventCallback<LocationDTO> OnSubmit { get; set; }
+
+    private bool IsNewLocation => Location.Id == 0;
+
+    private bool isSaving = false;
+
+    private bool IsDirty { get; set; } = false;
+    
+    private bool CanSubmit =>
+        !isSaving && !string.IsNullOrWhiteSpace(Location.Name) && (IsNewLocation || IsDirty);
+
+    private void OnInputChanged(ChangeEventArgs _)
+    {
+        if (!IsDirty)
+            IsDirty = true;
+        
+        StateHasChanged();
+    }
+
+    private async Task HandleSubmit()
+    {
+        // Allow create even if not dirty
+        if (!IsNewLocation && !IsDirty)
+            return;
+
+        if (string.IsNullOrWhiteSpace(Location.Name))
+            return;
+
+        isSaving = true;
+
+        try
+        {
+            await OnSubmit.InvokeAsync(Location);
+            IsDirty = false;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task ShowDeleteConfirmation()
+    {
+        if (Location.PartCount > 0)
+            return;
+
+        var data = (
+            bodyMessage: $"Are you sure you want to delete '{Location.Name}'?",
+            callback: EventCallback.Factory.Create(this, RaiseDeleteEvent)
+        );
+
+        var dialog = await DialogService.ShowDialogAsync<ConfirmationDialog>(
+            data,
+            new Microsoft.FluentUI.AspNetCore.Components.DialogParameters()
+            {
+                Title = "Delete Location",
+                PreventScroll = true,
+                PreventDismissOnOverlayClick = true
+            });
+
+        await dialog.Result;
+    }
+
+    private async Task RaiseDeleteEvent()
+    {
+        await OnDeleteRequested.InvokeAsync(Location);
+    }
+}

@@ -1,0 +1,301 @@
+@page "/locations"
+@layout PhoebeLayout
+@attribute [Authorize(Roles = "Technician, Administrator")]
+@using MESS.Blazor.Components.Layout
+@using MESS.Services.CRUD.Locations
+@using MESS.Services.DTOs.Locations
+@using Microsoft.AspNetCore.Authorization
+@inject ILocationService LocationService
+@inject IToastService ToastService
+
+<PageTitle>Part and Product Locations</PageTitle>
+
+<h3>Locations</h3>
+
+<div class="card mb-3 p-3">
+    <div class="row g-2 align-items-end">
+
+        <!-- Prefix input -->
+        <div class="col-auto">
+            <label for="bulkPrefix" class="form-label">Prefix (optional)</label>
+            <input type="text"
+                   id="bulkPrefix"
+                   class="form-control"
+                   @bind="_bulkPrefix" />
+        </div>
+
+        <!-- Numbering scheme select -->
+        <div class="col-auto">
+            <label for="bulkScheme" class="form-label">Numbering Scheme</label>
+            <select id="bulkScheme"
+                    class="form-select"
+                    @onchange="BulkSchemeChanged">
+                <option value="Decimal">Decimal</option>
+                <option value="Hexadecimal">Hexadecimal</option>
+                <option value="Alphanumeric">Alphanumeric</option>
+            </select>
+        </div>
+
+        <!-- Count input -->
+        <div class="col-auto">
+            <label for="bulkCount" class="form-label">Count</label>
+            <input type="number"
+                   id="bulkCount"
+                   class="form-control"
+                   min="1"
+                   max="1000"
+                   @bind="_bulkCount" />
+        </div>
+
+        <!-- Bulk create button -->
+        <div class="col-auto">
+            <button class="btn btn-primary"
+                    @onclick="HandleBulkCreateAsync"
+                    disabled="@(_isBulkSaving || _bulkCount <= 0)">
+                @if (_isBulkSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                }
+                Bulk Create
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<div class="d-flex justify-content-between my-2" style="flex-direction: row">
+    <div class="flex-grow-1"/>
+    <input type="text" class="form-control w-auto" placeholder="Search..."
+           @bind="SearchString" @bind:event="oninput"  />
+</div>
+
+<MudTable @ref="_table"
+          T="LocationDTO"
+          ServerData="ServerReload"
+          Loading="_isLoading"
+          FixedHeader="true"
+          Class="border rounded-3 pt-1"
+          TableClass="table table-striped table-hover align-top"
+          CellClass="align-top">
+
+    <HeaderContent>
+        <MudTh>
+            <MudTableSortLabel SortLabel="name_field" SortBy="new Func<LocationDTO, object>(x => x.Name)">
+                <strong>Name</strong>
+            </MudTableSortLabel>
+        </MudTh>
+        <MudTh><strong>Actions</strong></MudTh>
+    </HeaderContent>
+
+    <RowTemplate Context="location">
+        <LocationTableRow 
+            Location="location"
+            OnSubmit="@SubmitLocationCallback"
+            OnDeleteRequested="@HandleDeleteLocationAsync" />
+    </RowTemplate>
+
+    <NoRecordsContent>
+        <MudTr>
+            <MudTd Class="text-center text-muted" Style="width:100%">
+                No locations currently available.
+            </MudTd>
+        </MudTr>
+    </NoRecordsContent>
+
+    <FooterContent>
+        <LocationTableRow
+            Location="_newLocation"
+            OnSubmit="@SubmitLocationCallback" />
+    </FooterContent>
+
+    <PagerContent>
+        <MudTablePager InfoFormat="@InfoFormat()" HorizontalAlignment="MudBlazor.HorizontalAlignment.Center" RowsPerPageString="Rows per Page" />
+    </PagerContent>
+</MudTable>
+
+@code {
+    private string _bulkPrefix = "";
+    private LocationNumberingScheme _bulkScheme = LocationNumberingScheme.Decimal;
+    private int _bulkCount = 10;
+    private bool _isBulkSaving = false;
+    private List<LocationDTO> Locations { get; set; } = new();
+    private LocationDTO _newLocation = new() { Name = ""};
+    private MudTable<LocationDTO> _table = new();
+    private bool _isLoading;
+    private int _totalItems;
+
+    private string SearchString
+    {
+        get;
+        set
+        {
+            field = value;
+            _table.ReloadServerData();
+        }
+    } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadLocations();
+    }
+
+    private async Task LoadLocations()
+    {
+        _isLoading = true;
+
+        try
+        {
+            // Use the new GetAllAsync to retrieve all locations
+            Locations = (await LocationService.GetAllAsync()).ToList();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load locations: {ex.Message}");
+            Locations = [];
+        }
+
+        // Reset the new location row
+        _newLocation = new LocationDTO { Name = ""};
+
+        _isLoading = false;
+    }
+    
+    private Task<TableData<LocationDTO>> ServerReload(TableState state, CancellationToken token)
+    {
+        var data = Locations.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(SearchString))
+        {
+            data = data.Where(p => p.Name.Contains(SearchString, StringComparison.OrdinalIgnoreCase));
+        }
+
+        _totalItems = data.Count();
+
+        data = state.SortLabel switch
+        {
+            "name_field" => state.SortDirection == MudBlazor.SortDirection.Ascending
+                ? data.OrderBy(p => p.Name)
+                : data.OrderByDescending(p => p.Name),
+            _ => data
+        };
+
+        var paged = data.Skip(state.Page * state.PageSize).Take(state.PageSize).ToArray();
+
+        // Return a completed task instead of using async/await
+        return Task.FromResult(new TableData<LocationDTO> { TotalItems = _totalItems, Items = paged });
+    }
+    
+    private string InfoFormat() => $"Page {_table.CurrentPage + 1} of {(_totalItems / _table.RowsPerPage) + 1}";
+
+    private EventCallback<LocationDTO> SubmitLocationCallback =>
+        EventCallback.Factory.Create<LocationDTO>(this, HandleSubmitLocationAsync);
+
+    private async Task HandleSubmitLocationAsync(LocationDTO location)
+    {
+        try
+        {
+            LocationDTO? result;
+
+            if (location.Id == 0)
+            {
+                var request = new CreateLocationRequest
+                {
+                    Name = location.Name
+                };
+
+                result = await LocationService.CreateLocationAsync(request);
+
+                ToastService.ShowSuccess($"Created location '{result.Name}'.");
+            }
+            else
+            {
+                var request = new RenameLocationRequest
+                {
+                    LocationId = location.Id,
+                    NewName = location.Name
+                };
+
+                await LocationService.RenameLocationAsync(request);
+
+                result = location;
+
+                ToastService.ShowSuccess($"Renamed location '{result.Name}'.");
+            }
+
+            // Refresh data after a successful write
+            await LoadLocations();
+            await _table.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to submit location '{location.Name}': {ex.Message}");
+        }
+    }
+    
+    private async Task HandleBulkCreateAsync()
+    {
+        if (_bulkCount <= 0)
+        {
+            ToastService.ShowWarning("Please enter a valid number of locations to create.");
+            return;
+        }
+
+        _isBulkSaving = true;
+        try
+        {
+            // Call the service method
+            var createdLocations = await LocationService.CreateLocationsAsync(
+                prefix: _bulkPrefix,
+                count: _bulkCount,
+                scheme: _bulkScheme
+            );
+
+            ToastService.ShowSuccess($"Created {createdLocations.Count} locations successfully.");
+
+            // Reload the table
+            await LoadLocations();
+            await _table.ReloadServerData();
+
+            // Reset count for convenience
+            _bulkCount = 10;
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to create locations: {ex.Message}");
+        }
+        finally
+        {
+            _isBulkSaving = false;
+        }
+    }
+    
+    private void BulkSchemeChanged(ChangeEventArgs e)
+    {
+        if (e.Value != null)
+        {
+            _bulkScheme = Enum.Parse<LocationNumberingScheme>(e.Value.ToString() ?? string.Empty);
+        }
+    }
+
+    private async Task HandleDeleteLocationAsync(LocationDTO location)
+    {
+        try
+        {
+            var request = new DeleteLocationRequest
+            {
+                LocationId = location.Id
+            };
+
+            await LocationService.DeleteLocationAsync(request);
+
+            ToastService.ShowSuccess($"Deleted location '{location.Name}'.");
+
+            await LoadLocations();
+            await _table.ReloadServerData();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete location '{location.Name}': {ex.Message}");
+        }
+    }
+}

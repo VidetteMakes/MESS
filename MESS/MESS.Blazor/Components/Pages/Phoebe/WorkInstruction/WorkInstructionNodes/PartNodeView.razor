@@ -28,18 +28,48 @@
                                @oninput="e => OnPartChanged(e, nameof(PartDefinition.Name))" />
                     </div>
 
-                    <!-- InputType Toggle -->
+                    <!-- Input Type Radios -->
                     <div class="d-flex flex-column align-items-start ms-3 me-3">
                         <label class="form-label mb-1">Input Type</label>
-                        <div class="form-check form-switch">
-                            <input class="form-check-input toggle-switch" type="checkbox"
-                                   role="switch"
-                                   id="inputTypeSwitch_@PartNode.Id"
-                                   checked="@(PartNode.InputType == PartInputType.ProductionLogId)"
-                                   @onclick="ToggleInputType" />
-                            <label class="form-check-label toggle-label" for="inputTypeSwitch_@PartNode.Id">
-                                @((PartNode.InputType == PartInputType.SerialNumber) ? "Serial" : "Production Log")
-                            </label>
+
+                        <div class="d-flex gap-3">
+
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input"
+                                       type="radio"
+                                       name="inputType_@PartNode.Id"
+                                       id="serial_@PartNode.Id"
+                                       checked="@(PartNode.InputType == PartInputType.SerialNumber)"
+                                       @onchange="() => SetInputType(PartInputType.SerialNumber)" />
+                                <label class="form-check-label" for="serial_@PartNode.Id">
+                                    Serial
+                                </label>
+                            </div>
+
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input"
+                                       type="radio"
+                                       name="inputType_@PartNode.Id"
+                                       id="prodlog_@PartNode.Id"
+                                       checked="@(PartNode.InputType == PartInputType.ProductionLogId)"
+                                       @onchange="() => SetInputType(PartInputType.ProductionLogId)" />
+                                <label class="form-check-label" for="prodlog_@PartNode.Id">
+                                    Production Log
+                                </label>
+                            </div>
+
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input"
+                                       type="radio"
+                                       name="inputType_@PartNode.Id"
+                                       id="location_@PartNode.Id"
+                                       checked="@(PartNode.InputType == PartInputType.Location)"
+                                       @onchange="() => SetInputType(PartInputType.Location)" />
+                                <label class="form-check-label" for="location_@PartNode.Id">
+                                    Location
+                                </label>
+                            </div>
+
                         </div>
                     </div>
                 </div>
@@ -97,15 +127,12 @@ else
             await OnChanged.InvokeAsync();
     }
     
-    private async Task ToggleInputType()
+    private async Task SetInputType(PartInputType type)
     {
         if (PartNode is null)
             return;
 
-        PartNode.InputType = PartNode.InputType == PartInputType.SerialNumber
-            ? PartInputType.ProductionLogId
-            : PartInputType.SerialNumber;
-
+        PartNode.InputType = type;
         await NotifyChangedAsync();
     }
 }

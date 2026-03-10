@@ -41,6 +41,12 @@ public enum PartInputType
     /// to an existing <see cref="ProductionLog"/> entry, typically used when
     /// linking parts that were previously logged in production.
     /// </summary>
-    ProductionLogId = 1
+    ProductionLogId = 1,
+    
+    /// <summary>
+    /// Indicates that the part node expects the name of a <see cref="Location"/>
+    /// where the required <see cref="SerializablePart"/> is currently stored.
+    /// </summary>
+    Location = 2
 }
 

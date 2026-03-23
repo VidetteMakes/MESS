@@ -45,6 +45,7 @@ builder.Services.AddDbContextFactory<ApplicationContext>(options =>
         
         npgsqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
     });
+    options.UseSnakeCaseNamingConvention();
 });
 
 builder.Services.AddCascadingAuthenticationState();

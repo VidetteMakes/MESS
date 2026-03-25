@@ -1,43 +1,43 @@
 {
-  name MESS Dev,
-  dockerComposeFile docker-compose.yml,
-  service app,
-  workspaceFolder workspaces${localWorkspaceFolderBasename}MESS,
-  shutdownAction stopCompose,
-  remoteUser vscode,
-  forwardPorts [5000, 5001, 1433],
-  portsAttributes {
-    5000 {
-      label Blazor HTTP,
-      onAutoForward notify
+  "name": "MESS Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces${localWorkspaceFolderBasename}MESS",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "forwardPorts": [5000, 5001, 1433],
+  "portsAttributes": {
+    "5000" {
+      "label": "Blazor HTTP",
+      "onAutoForward": "notify"
     },
-    5001 {
-      label Blazor HTTPS,
-      onAutoForward notify
+    "5001" {
+      "label": "Blazor HTTPS",
+      "onAutoForward": "notify"
     },
-    1433 {
-      label SQL Server
+    "1433" {
+      "label": "SQL Server"
     }
   },
-  customizations {
-    vscode {
-      extensions [
-        ms-dotnettools.csdevkit,
-        ms-dotnettools.csharp,
-        ms-azuretools.vscode-docker
+  "customizations" {
+    "vscode" {
+      "extensions" [
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "ms-azuretools.vscode-docker"
       ],
-      settings {
-        dotnet.defaultSolution MESS.slnx,
-        files.exclude {
-          bin true,
-          obj true
+      "settings" {
+        "dotnet.defaultSolution": "MESS.slnx",
+        "files.exclude" {
+          "**/bin": true,
+          "**/obj": true
         }
       }
     }
   },
-  postCreateCommand bash workspaces${localWorkspaceFolderBasename}.devcontainerinit-db.sh,
-  containerEnv {
-    ASPNETCORE_ENVIRONMENT Development,
-    ConnectionStrings__MESSConnection Server=db,1433;Database=MESS_Data;User Id=sa;Password=MessDevPassword_123!;TrustServerCertificate=True;
+  "postCreateCommand": "bash /workspaces/${localWorkspaceFolderBasename}/.devcontainer/init-db.sh",
+  "containerEnv" {
+    "ASPNETCORE_ENVIRONMENT": "Development",
+    "ConnectionStrings__MESSConnection": "Server=db,1433;Database=MESS_Data;User Id=sa;Password=MessDevPassword_123!;TrustServerCertificate=True;"
   }
 }

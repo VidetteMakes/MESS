@@ -7,28 +7,28 @@
   "remoteUser": "vscode",
   "forwardPorts": [5000, 5001, 1433],
   "portsAttributes": {
-    "5000" {
+    "5000": {
       "label": "Blazor HTTP",
       "onAutoForward": "notify"
     },
-    "5001" {
+    "5001": {
       "label": "Blazor HTTPS",
       "onAutoForward": "notify"
     },
-    "1433" {
+    "1433": {
       "label": "SQL Server"
     }
   },
-  "customizations" {
-    "vscode" {
-      "extensions" [
+  "customizations": {
+    "vscode": {
+      "extensions": [
         "ms-dotnettools.csdevkit",
         "ms-dotnettools.csharp",
         "ms-azuretools.vscode-docker"
       ],
-      "settings" {
+      "settings": {
         "dotnet.defaultSolution": "MESS.slnx",
-        "files.exclude" {
+        "files.exclude": {
           "**/bin": true,
           "**/obj": true
         }
@@ -36,7 +36,7 @@
     }
   },
   "postCreateCommand": "bash /workspaces/${localWorkspaceFolderBasename}/.devcontainer/init-db.sh",
-  "containerEnv" {
+  "containerEnv": {
     "ASPNETCORE_ENVIRONMENT": "Development",
     "ConnectionStrings__MESSConnection": "Server=db,1433;Database=MESS_Data;User Id=sa;Password=MessDevPassword_123!;TrustServerCertificate=True;"
   }

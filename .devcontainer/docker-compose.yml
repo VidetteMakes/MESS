@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/dotnet:1-8.0-bookworm
+    image: mcr.microsoft.com/devcontainers/dotnet:1-9.0-bookworm
     volumes:
       - ..:/workspaces:cached
     command: sleep infinity

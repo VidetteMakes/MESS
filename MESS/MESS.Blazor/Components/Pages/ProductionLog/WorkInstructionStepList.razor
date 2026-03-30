@@ -2,10 +2,14 @@
 @using MESS.Blazor.Components.Pages.ProductionLog.WorkInstructionNodes
 @using PartNode = MESS.Data.Models.PartNode
 @using MESS.Blazor.Components.Pages.ProductionLog.WorkInstructionNodes.PartNode
+@using MESS.Services.CRUD.SerializableParts
+@using MESS.Services.CRUD.Tags
 @using MESS.Services.DTOs.ProductionLogs.Form
 @using MESS.Services.DTOs.ProductionLogs.LogSteps.Form
 @using MESS.Services.UI.PartTraceability
-@inject IPartTraceabilityService PartTraceabilityService;
+@inject IPartTraceabilityStateService PartTraceabilityService
+@inject ITagService TagService
+@inject ISerializablePartService SerializablePartService
 
 @if (ProductionLogs.Any())
 {
@@ -18,11 +22,11 @@
                     var logSteps = new List<LogStepFormDTO>();
                     foreach (var log in ProductionLogs)
                     {
-                        var existing = log.LogSteps?.FirstOrDefault(ls => ls.WorkInstructionStepId == step.Id);
+                        var existing = log.LogSteps.FirstOrDefault(ls => ls.WorkInstructionStepId == step.Id);
                         if (existing == null)
                         {
                             existing = new LogStepFormDTO { WorkInstructionStepId = step.Id };
-                            log.LogSteps?.Add(existing);
+                            log.LogSteps.Add(existing);
                         }
                         logSteps.Add(existing);
                     }
@@ -45,37 +49,91 @@
             }
         }
 
-        @if (ActiveWorkInstruction is { PartProducedIsSerialized: true, PartProduced: not null })
-        {
-            <div class="card card-body">
-                <div class="mb-2">
-                    <div class="form-label">
-                        @(ProductionLogs.Count == 1 ? "Produced Serial Number" : "Produced Serial Numbers")
-                    </div>
-                </div>
-
-                <div class="d-flex flex-wrap gap-2 justify-content-around align-content-center">
-                    @for (var i = 0; i < ProductionLogs.Count; i++)
-                    {
-                        var index = i;
-
-                        <div class="form-floating flex-grow-1" style="min-width: 220px;">
-                            <input
-                                id=@($"producedSerialNumber-{index}")
-                                class="form-control tall-input text-lightweight"
-                                @oninput="(e => OnProducedSerialInput(index, e.Value?.ToString()))" />
-
+       @if (ActiveWorkInstruction.PartProduced is not null)
+    {
+        <div class="d-flex flex-wrap gap-2 justify-content-around">
+            @for (var i = 0; i < ProductionLogs.Count; i++)
+            {
+                var index = i;
+                <div class="card mb-1 flex-grow-1" style="min-width: 220px;">
+                    <div class="card-header d-flex align-items-center justify-content-between py-2">
+                        <div class="d-flex flex-column">
+                            <span class="fw-semibold" style="font-size: 1rem;">
+                                Produced @ActiveWorkInstruction.PartProduced!.Name
+                            </span>
                             @if (ProductionLogs.Count > 1)
                             {
-                                <label for=@($"producedSerialNumber-{index}") class="form-label subtle-label">
+                                <small class="text-secondary" style="font-size: 0.85rem;">
                                     #@(index + 1)
-                                </label>
+                                </small>
                             }
                         </div>
-                    }
+
+                        <span class="text-muted" style="font-size: 1.2rem;">
+                            @if (ActiveWorkInstruction.PartProducedIsSerialized)
+                            {
+                                <i class="bi bi-upc-scan"></i>
+                            }
+                            else
+                            {
+                                <i class="bi bi-qr-code"></i>
+                            }
+                        </span>
+                    </div>
+                    <div class="card-body py-2 d-flex flex-column gap-2">
+
+                        @* Serial Number (only if serialized) *@
+                        @if (ActiveWorkInstruction.PartProducedIsSerialized)
+                        {
+                            <input
+                                class="form-control text-lightweight @(GetProducedSerialInputClass(index))"
+                                placeholder="Scan or enter serial number"
+                                @oninput="@(async e => await OnProducedSerialInput(index, e.Value?.ToString()))" />
+
+                            <div class="form-text small mt-1">
+                                @if (_serialValidationLoading.TryGetValue(index, out var isSerialLoading) && isSerialLoading)
+                                {
+                                    <span class="text-muted">Checking...</span>
+                                }
+                                else if (_serialValidationMessages.TryGetValue(index, out var message) && message is not null)
+                                {
+                                    var type = _serialValidationTypes.GetValueOrDefault(index);
+
+                                    <span class="@(type == SerialValidationType.Success ? "text-success" : "text-info")">
+                                        @message
+                                    </span>
+                                }
+                            </div>
+                        }
+
+                        @* Tag Code Input *@
+                        <div>
+                            <input
+                                class="@(GetProducedTagInputClass(index)) form-control text-lightweight"
+                                placeholder="Scan or enter tag code"
+                                @oninput="@(async e => await OnProducedTagInput(index, e.Value?.ToString()))" />
+
+                            <div class="form-text small mt-1">
+                                @if (_tagValidationLoading.TryGetValue(index, out var isTagLoading) && isTagLoading)
+                                {
+                                    <span class="text-muted">Checking...</span>
+                                }
+                                else if (_tagValidationMessages.TryGetValue(index, out var message) && message is not null)
+                                {
+                                    var type = _tagValidationTypes.GetValueOrDefault(index);
+
+                                    <span class="@(type == ValidationMessageType.Success ? "text-success" : "text-danger")">
+                                        @message
+                                    </span>
+                                }
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
-            </div>
-        }
+            }
+        </div>
+    }
     </ul>
 }
 
@@ -100,7 +158,28 @@
     /// A processed list of "blocks" — each block is either a Step node or a group of Part nodes.
     /// </summary>
     private List<object> NodeBlocks { get; set; } = [];
+    
+    // Track debounce tokens per input
+    private readonly Dictionary<int, CancellationTokenSource> _debounceTokens = new();
 
+    // Track validation state per input
+    private readonly Dictionary<int, string?> _tagValidationMessages = new();
+
+    // track loading state
+    private readonly Dictionary<int, bool> _tagValidationLoading = new();
+    
+    private readonly Dictionary<int, ValidationMessageType?> _tagValidationTypes = new();
+    
+    private enum ValidationMessageType { Success, Error }
+    
+    private readonly Dictionary<int, string?> _serialValidationMessages = new();
+    private readonly Dictionary<int, bool> _serialValidationLoading = new();
+    private readonly Dictionary<int, SerialValidationType?> _serialValidationTypes = new();
+    
+    
+    private enum SerialValidationType { Success, Info }
+
+    /// <inheritdoc/>
     protected override void OnParametersSet()
     {
         NodeBlocks = GroupNodes(ActiveWorkInstruction.Nodes.OrderBy(n => n.Position).ToList());
@@ -138,10 +217,149 @@
         return result;
     }
     
-    private void OnProducedSerialInput(int logIndex, string? value)
+    private async Task OnProducedSerialInput(int logIndex, string? value)
     {
-        // Input cleared → keep the produced part, but remove the serial number
-        //Under normal circumstances, add the produced part serial number.
-        PartTraceabilityService.SetProducedPartSerialNumber(logIndex, !string.IsNullOrWhiteSpace(value) ? value : null);
+        var serialNumber = string.IsNullOrWhiteSpace(value) ? null : value;
+
+        PartTraceabilityService.SetProducedPartSerialNumber(logIndex, serialNumber);
+
+        if (_debounceTokens.TryGetValue(logIndex, out var existingCts))
+            existingCts.Cancel();
+
+        var cts = new CancellationTokenSource();
+        _debounceTokens[logIndex] = cts;
+
+        _serialValidationLoading[logIndex] = true;
+        _serialValidationMessages[logIndex] = "Checking...";
+        _serialValidationTypes[logIndex] = null;
+
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(400, cts.Token);
+
+            if (serialNumber is null)
+            {
+                _serialValidationMessages[logIndex] = null;
+                _serialValidationTypes[logIndex] = null;
+                _serialValidationLoading[logIndex] = false;
+                return;
+            }
+
+            var partDef = ActiveWorkInstruction.PartProduced;
+
+            if (partDef?.IsSerialNumberUnique == true)
+            {
+                var exists = await SerializablePartService.ExistsAsync(partDef.Id, serialNumber);
+
+                if (exists)
+                {
+                    _serialValidationMessages[logIndex] = "Serial number already exists";
+                    _serialValidationTypes[logIndex] = SerialValidationType.Info;
+                }
+                else
+                {
+                    _serialValidationMessages[logIndex] = "Serial number is new";
+                    _serialValidationTypes[logIndex] = SerialValidationType.Success;
+                }
+            }
+            else
+            {
+                _serialValidationMessages[logIndex] = null;
+                _serialValidationTypes[logIndex] = SerialValidationType.Success;
+            }
+
+            _serialValidationLoading[logIndex] = false;
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        StateHasChanged();
+    }
+    
+    private async Task OnProducedTagInput(int logIndex, string? value)
+    {
+        var tagCode = string.IsNullOrWhiteSpace(value) ? null : value;
+
+        // Pass in the PartProduced ID
+        var partDefId = ActiveWorkInstruction.PartProduced!.Id;
+        
+        await PartTraceabilityService.SetProducedPartTagCodeAsync(logIndex, tagCode, partDefId);
+
+        if (_debounceTokens.TryGetValue(logIndex, out var existingCts))
+            existingCts.Cancel();
+
+        var cts = new CancellationTokenSource();
+        _debounceTokens[logIndex] = cts;
+
+        _tagValidationLoading[logIndex] = true;
+        _tagValidationMessages[logIndex] = "Checking...";
+        _tagValidationTypes[logIndex] = null;
+
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(400, cts.Token);
+
+            if (tagCode is null)
+            {
+                _tagValidationMessages[logIndex] = null;
+                _tagValidationTypes[logIndex] = null;
+                _tagValidationLoading[logIndex] = false;
+                return;
+            }
+
+            var isAvailable = await TagService.IsAvailableAsync(tagCode);
+
+            _tagValidationMessages[logIndex] = isAvailable
+                ? "Tag available"
+                : "Tag not available";
+
+            _tagValidationTypes[logIndex] = isAvailable
+                ? ValidationMessageType.Success
+                : ValidationMessageType.Error;
+
+            _tagValidationLoading[logIndex] = false;
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        StateHasChanged();
+    }
+    
+    private string GetProducedTagInputClass(int index)
+    {
+        var baseClass = "";
+
+        if (_tagValidationTypes.TryGetValue(index, out var type))
+        {
+            if (type == ValidationMessageType.Success)
+                return $"{baseClass} is-valid";
+
+            if (type == ValidationMessageType.Error)
+                return $"{baseClass} is-invalid";
+        }
+
+        return baseClass;
+    }
+    
+    private string GetProducedSerialInputClass(int index)
+    {
+        if (_serialValidationTypes.TryGetValue(index, out var type))
+        {
+            if (type == SerialValidationType.Success)
+                return "is-valid";
+
+            if (type == SerialValidationType.Info)
+                return "is-valid"; // still valid, just informational
+        }
+
+        return "";
     }
 }

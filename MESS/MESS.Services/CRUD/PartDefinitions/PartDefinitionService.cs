@@ -540,4 +540,140 @@ public class PartDefinitionService : IPartDefinitionService
             return new DeletePartDefinitionResponse { Result = DeletePartDefinitionResult.Error };
         }
     }
+    
+    /// <inheritdoc />
+    public async Task<bool> MergePartDefinitionsAsync(PartDefinition target, PartDefinition source)
+    {
+        if (target == null) throw new ArgumentNullException(nameof(target));
+        if (source == null) throw new ArgumentNullException(nameof(source));
+        if (target.Id == source.Id)
+        {
+            Log.Warning("MergePartDefinitionsAsync called with identical PartDefinition IDs {Id}", target.Id);
+            return false;
+        }
+
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            // Use the execution strategy for retries
+            var strategy = context.Database.CreateExecutionStrategy();
+
+            return await strategy.ExecuteAsync(async () =>
+            {
+                // Wrap everything in a transaction inside the strategy
+                await using var transaction = await context.Database.BeginTransactionAsync();
+
+                // Reload tracked entities
+                var targetTracked = await context.PartDefinitions.FindAsync(target.Id);
+                var sourceTracked = await context.PartDefinitions.FindAsync(source.Id);
+
+                if (targetTracked == null || sourceTracked == null)
+                {
+                    Log.Warning("One of the PartDefinitions not found. Target ID {TargetId}, Source ID {SourceId}", target.Id, source.Id);
+                    return false;
+                }
+
+                // --- Fill missing fields on target ---
+                if (string.IsNullOrWhiteSpace(targetTracked.Number) && !string.IsNullOrWhiteSpace(sourceTracked.Number))
+                    targetTracked.Number = sourceTracked.Number;
+
+                if (string.IsNullOrWhiteSpace(targetTracked.Name) && !string.IsNullOrWhiteSpace(sourceTracked.Name))
+                    targetTracked.Name = sourceTracked.Name;
+
+                // --- Update all foreign keys referencing source ---
+                var partNodes = await context.PartNodes
+                    .Where(pn => pn.PartDefinitionId == sourceTracked.Id)
+                    .ToListAsync();
+                partNodes.ForEach(pn => pn.PartDefinitionId = targetTracked.Id);
+
+                var products = await context.Products
+                    .Where(p => p.PartDefinitionId == sourceTracked.Id)
+                    .ToListAsync();
+                products.ForEach(p => p.PartDefinitionId = targetTracked.Id);
+
+                var serializableParts = await context.SerializableParts
+                    .Where(sp => sp.PartDefinitionId == sourceTracked.Id)
+                    .ToListAsync();
+                serializableParts.ForEach(sp => sp.PartDefinitionId = targetTracked.Id);
+
+                var workInstructions = await context.WorkInstructions
+                    .Where(wi => wi.PartProducedId == sourceTracked.Id)
+                    .ToListAsync();
+                workInstructions.ForEach(wi => wi.PartProducedId = targetTracked.Id);
+
+                // --- Remove the source part ---
+                context.PartDefinitions.Remove(sourceTracked);
+
+                // --- Save all changes ---
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                Log.Information(
+                    "Merged PartDefinition ID {SourceId} into ID {TargetId}. Updated {PN} PartNodes, {P} Products, {SP} SerializableParts, {WI} WorkInstructions.",
+                    sourceTracked.Id, targetTracked.Id,
+                    partNodes.Count, products.Count, serializableParts.Count, workInstructions.Count);
+
+                return true;
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error merging PartDefinition ID {SourceId} into ID {TargetId}", source.Id, target.Id);
+            return false;
+        }
+    }
+    
+    /// <inheritdoc />
+    public async Task<int> BatchMergeByNameAsync(IProgress<int>? progress = null)
+    {
+        int mergeCount = 0;
+
+        try
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
+            // Load all PartDefinitions
+            var allParts = await context.PartDefinitions
+                .OrderBy(p => p.Name) // optional
+                .ToListAsync();
+
+            // Group by Name (case-insensitive) and filter duplicates
+            var grouped = allParts
+                .GroupBy(p => p.Name?.ToLower())
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            int totalGroups = grouped.Count;
+            int currentGroup = 0;
+
+            foreach (var group in grouped)
+            {
+                // Prefer a target that has both Name and Number
+                var target = group
+                    .Where(p => !string.IsNullOrWhiteSpace(p.Number))
+                    .OrderBy(p => p.Id)
+                    .FirstOrDefault() ?? group.OrderBy(p => p.Id).First();
+
+                foreach (var source in group.Where(p => p.Id != target.Id))
+                {
+                    bool merged = await MergePartDefinitionsAsync(target, source);
+                    if (merged) mergeCount++;
+                }
+
+                // Update progress after processing each group
+                currentGroup++;
+                int percent = (int)((double)currentGroup / totalGroups * 100);
+                progress?.Report(percent);
+            }
+
+            Log.Information("Batch merge complete. Total merges performed: {Count}", mergeCount);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error performing batch merge of PartDefinitions by Name.");
+        }
+
+        return mergeCount;
+    }
 }

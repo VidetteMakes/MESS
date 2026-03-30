@@ -9,6 +9,8 @@
 @using MESS.Services.UI.PartTraceability
 @using MESS.Services.UI.ProductionLogEvent
 @using MESS.Services.UI.QrCodes
+@using MESS.Blazor.Components.Dialogs
+@using MESS.Services.CRUD.PartTraceability
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IProductionLogService ProductionLogService
@@ -19,10 +21,11 @@
 @inject ISessionManager SessionManager
 @inject AuthenticationStateProvider AuthProvider
 @inject IProductionLogPartService ProductionLogPartService
-@inject IPartTraceabilityService PartTraceabilityService
 @inject IJSRuntime JSRuntime
 @inject IToastService ToastService
 @inject IQrCodeService QrPrinter
+@inject IPartTraceabilityStateService PartTraceabilityService
+@inject IPartTraceabilityPersistenceService PartTraceabilityPersistenceService
 @implements IAsyncDisposable
 @attribute [StreamRendering(false)]
 
@@ -70,6 +73,7 @@
                                 <DataAnnotationsValidator/>
                                 <ValidationSummary/>
                                 <ConfirmationModal @ref="popupRef" OnSubmit="HandleConfirmation"/>
+                                <MessageModal @ref="errorPopupRef" />
 
                                 @if (ActiveWorkInstruction != null && ActiveProduct != null)
                                 {

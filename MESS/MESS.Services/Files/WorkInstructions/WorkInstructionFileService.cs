@@ -18,7 +18,7 @@ namespace MESS.Services.Files.WorkInstructions;
 /// <inheritdoc />
 public partial class WorkInstructionFileService : IWorkInstructionFileService
 {
-    // The following attributes define the current expected XLSX structure as of 7/1/2025
+    // The following attributes define the current expected XLSX structure as of 3/23/2026
     private const string PRODUCT_NAME_CELL = "B1";
     private const string INSTRUCTION_TITLE_CELL = "B2";
     private const string VERSION_CELL = "B3";
@@ -180,7 +180,7 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
 
                         // Combine all part definitions into a single string
                         var partStrings = partGroup
-                            .Select(pn => pn.PartNameWithNumberAndInputType);
+                            .Select(pn => pn.PartExportString);
 
                         worksheet.Cell(currentRow, PART_COLUMN).Value = string.Join(", ", partStrings);
 
@@ -764,6 +764,7 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
                             Position = position++,
                             PartName = parsedPart.PartName,
                             PartNumber = parsedPart.PartNumber,
+                            IsSerialNumberUnique = parsedPart.IsSerialUnique ?? true,
                             InputType = ResolveInputType(parsedPart.InputType)
                         });
                     }
@@ -1067,9 +1068,9 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
         }
     }
     
-    private List<(string PartName, string? PartNumber, string? InputType)> ParsePartsListFromString(string input)
-    {
-        var results = new List<(string PartName, string? PartNumber, string? InputType)>();
+    private List<(string PartName, string? PartNumber, string? InputType, bool? IsSerialUnique)>
+        ParsePartsListFromString(string input) {
+        var results = new List<(string PartName, string? PartNumber, string? InputType, bool?  IsSerialUnique)>();
 
         if (string.IsNullOrWhiteSpace(input))
             return results;
@@ -1086,23 +1087,42 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
             {
                 var partName = match.Groups["name"].Value.Trim();
 
-                var partNumber = match.Groups["number"].Success
+                var partNumber = !string.IsNullOrWhiteSpace(match.Groups["number"].Value)
                     ? match.Groups["number"].Value.Trim()
                     : null;
 
-                var inputType = match.Groups["inputType"].Success
+                var inputType = !string.IsNullOrWhiteSpace(match.Groups["inputType"].Value)
                     ? match.Groups["inputType"].Value.Trim()
                     : null;
 
-                results.Add((partName, partNumber, inputType));
+                var isSerialUnique = !string.IsNullOrWhiteSpace(match.Groups["isSerialUnique"].Value)
+                    ? ParseBool(match.Groups["isSerialUnique"].Value.Trim())
+                    : null;
+
+                results.Add((partName, partNumber, inputType,  isSerialUnique));
             }
             else
             {
-                results.Add((trimmed, null, null));
+                results.Add((trimmed, null, null, null));
             }
         }
 
         return results;
+    }
+    
+    private static bool? ParseBool(string value)
+    {
+        if (bool.TryParse(value, out var result))
+            return result;
+
+        value = value.Trim().ToLowerInvariant();
+
+        return value switch
+        {
+            "1" or "yes" or "y" => true,
+            "0" or "no" or "n" => false,
+            _ => null
+        };
     }
     
     /// <summary>
@@ -1110,7 +1130,8 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
     /// (PART_NAME)
     /// (PART_NAME, PART_NUMBER)
     /// (PART_NAME, PART_NUMBER, INPUT_TYPE)
+    /// (PART_NAME, PART_NUMBER, INPUT_TYPE, IS_SERIAL_UNIQUE)
     /// </summary>
-    [GeneratedRegex(@"\(\s*(?<name>[^,()]+?)\s*(?:,\s*(?<number>[^,()]+?)\s*(?:,\s*(?<inputType>[^)]+?))?)?\s*\)")]
+    [GeneratedRegex(@"\(\s*(?<name>[^,()]+?)\s*(?:,\s*(?<number>[^,()]+?)\s*(?:,\s*(?<inputType>[^,()]+?)\s*(?:,\s*(?<isSerialUnique>[^)]+?))?)?)?\s*\)")]
     private static partial Regex PartsListRegex();
 }

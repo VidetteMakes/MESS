@@ -8,11 +8,14 @@
 <MudTd DataLabel="Number">
     <InputText id="number" @bind-Value="PartDefinition.Number" class="form-control" placeholder="Enter part number (optional)" @oninput="OnInputChanged"/>
 </MudTd>
+<MudTd DataLabel="Serial Number Unique">
+    <InputCheckbox @bind-Value="PartDefinition.IsSerialNumberUnique" class="form-check-input" @onchange="OnInputChanged"/>
+</MudTd>
 <MudTd DataLabel="Actions">
     @if (!IsNewPart)
     {
         <div class="save-button-container">
-            <button class="btn btn-sm btn-success" @onclick="HandleSubmit" disabled="@isSaving" title="Save">
+            <button class="btn btn-sm btn-success" @onclick="HandleSubmit" disabled="@_isSaving" title="Save">
                 <i class="bi bi-floppy"></i>
                 @if (IsDirty)
                 {
@@ -26,7 +29,7 @@
     }
     else
     {
-        <button class="btn btn-sm btn-primary" @onclick="HandleSubmit" disabled="@isSaving">
+        <button class="btn btn-sm btn-primary" @onclick="HandleSubmit" disabled="@_isSaving">
             <i class="bi bi-plus-lg"></i>
         </button>
     }
@@ -52,7 +55,7 @@
     public EventCallback<PartDefinition> OnSubmit { get; set; }
 
     private bool IsNewPart => PartDefinition.Id == 0;
-    private bool isSaving = false;
+    private bool _isSaving = false;
     private bool IsDirty { get; set; } = false;
 
     private void OnInputChanged(ChangeEventArgs e)
@@ -65,9 +68,9 @@
         if (!IsDirty)
             return;
 
-        isSaving = true;
+        _isSaving = true;
         await OnSubmit.InvokeAsync(PartDefinition);
-        isSaving = false;
+        _isSaving = false;
         IsDirty = false;
     }
 

@@ -1,104 +1,267 @@
 @using MESS.Data.Models
+@using MESS.Services.CRUD.SerializableParts
+@using MESS.Services.UI.PartTraceability
+@inject IPartTraceabilityStateService PartTraceabilityService
+@inject ISerializablePartService SerializablePartService
 
-<div class="form-floating flex-grow-1">
-    @switch (PartNode.InputType)
-    {
-        case PartInputType.SerialNumber:
-            <InputText
-                id="serialInput"
-                class="form-control tall-input text-lightweight"
-                placeholder="@PartNode.PartDefinition!.Number"
-                @bind-Value="_serialNumber"
-                @bind-Value:after="OnInputChanged" />
+<div class="card mb-1" style="min-width: 150px;">
+    <!-- Card header -->
+    <div class="card-header d-flex align-items-center justify-content-between py-2">
+        <div class="d-flex flex-column">
+            <span class="fw-semibold" style="font-size: 1rem;">@PartNode.PartDefinition!.Name</span>
+            <small class="text-muted">@PartNode.PartDefinition!.Number</small>
+        </div>
+        <span class="text-muted" style="font-size: 1.2rem;">
+            @if (PartNode.InputType == PartInputType.Tag)
+            {
+                <i class="bi bi-qr-code"></i>
+            }
+            else
+            {
+                <i class="bi bi-upc-scan"></i>
+            }
+        </span>
+    </div>
 
-            <label for="serialInput" class="form-label subtle-label">
-                @(PartNode.PartDefinition!.Name)
-            </label>
-            break;
-        case PartInputType.ProductionLogId:
-            <InputNumber TValue="int?" 
-                         id="logInput"
-                         class="form-control tall-input text-lightweight"
-                         placeholder="@PartNode.PartDefinition!.Number"
-                         @bind-Value="_productionLogId"
-                         @bind-Value:after="OnInputChanged" />
+    <!-- Card body -->
+    <div class="card-body py-2">
+        <InputText
+            id="@($"input-{PartNode.Id}")"
+            class="@GetInputClass()"
+            placeholder="@($"Scan or enter {(PartNode.InputType == PartInputType.Tag ? "tag code" : "serial number")}")"
+            @bind-Value="BoundValue"
+            @bind-Value:after="OnInputChanged" />
 
-            <label for="logInput" class="form-label subtle-label">
-                @(PartNode.PartDefinition!.Name)
-            </label>
-            break;
-        default:
-            throw new ArgumentOutOfRangeException();
-    }
+        @if (_isSearching)
+        {
+            <div class="form-text text-muted small mt-1">Searching...</div>
+        }
+
+        @if (_validationMessage is not null)
+        {
+            <div class="form-text @GetValidationTextClass() small mt-1">
+                @_validationMessage
+            </div>
+        }
+    </div>
 </div>
 
 @code {
-    /// <summary>
-    /// Determines which type of input should be rendered: serial number or production log ID.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public required PartNode PartNode { get; set; }
-
-    /// <summary>
-    /// The serializable part being edited. Only used for serial number input.
-    /// </summary>
-    [Parameter]
-    public SerializablePart? SerializablePart { get; set; }
-
-    [Parameter]
-    public EventCallback<(PartNode node, object? value)> AfterInputChanged { get; set; }
+    [Parameter, EditorRequired] public required PartNode PartNode { get; set; }
+    [Parameter, EditorRequired] public int LogIndex { get; set; }
+    [Parameter] public EventCallback<(PartNode node, object? value)> AfterInputChanged { get; set; }
 
     private string? _serialNumber;
-    private int? _productionLogId;
+    private string? _tagCode;
+    private bool _isSearching;
+    private string? _validationMessage;
+    private ValidationMessageType _validationMessageType;
+    private CancellationTokenSource? _debounceCts;
+    
+    private int _previousLogIndex = -1;
 
-    /// <summary>
-    /// Synchronizes the component's internal input fields with the latest parameter values.
-    /// <para>
-    /// If the <see cref="PartNode"/> requires a serial number, this method initializes the
-    /// backing field (<c>_serialNumber</c>) from the provided <see cref="SerializablePart"/>.
-    /// For <see cref="PartInputType.ProductionLogId"/>, no initial value is populated and the
-    /// input starts empty.
-    /// </para>
-    /// <remarks>
-    /// This method runs each time incoming parameters change, ensuring the displayed input
-    /// reflects the correct state when the component is updated or re-rendered by its parent.
-    /// </remarks>
-    /// </summary>
-    protected override void OnParametersSet()
+    private enum ValidationMessageType
     {
-        if (PartNode is null)
-            throw new ArgumentNullException(nameof(PartNode));
+        Success,
+        Error,
+        Info
+    }
+    
+    private string GetValidationTextClass()
+    {
+        return _validationMessageType switch
+        {
+            ValidationMessageType.Success => "text-success",
+            ValidationMessageType.Error => "text-danger",
+            ValidationMessageType.Info => "text-info",
+            _ => "text-muted"
+        };
+    }
 
-        if (PartNode.PartDefinition is null)
-            throw new InvalidOperationException("PartNode.PartDefinition cannot be null.");
+    protected override async void OnParametersSet()
+    {
+        var logChanged = _previousLogIndex != LogIndex;
 
-        if (PartNode.InputType == PartInputType.SerialNumber)
-        { 
-            _serialNumber = SerializablePart?.SerialNumber;
+        if (logChanged)
+        {
+            _validationMessage = null;
+            _validationMessageType = default;
+            _isSearching = false;
+            _debounceCts?.Cancel();
+        }
+
+        _previousLogIndex = LogIndex;
+
+        var entry = PartTraceabilityService.AddOrGetEntry(LogIndex, PartNode.Id);
+        _serialNumber = entry.SerialNumber;
+        _tagCode = entry.TagCode;
+
+        // Trigger validation if needed
+        if (logChanged && PartNode.InputType == PartInputType.Tag && !string.IsNullOrWhiteSpace(_tagCode))
+        {
+            _ = ValidateTagAsync(_tagCode);
         }
     }
 
     private async Task OnInputChanged()
     {
-        object? updatedValue = PartNode.InputType switch
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+
+        try
         {
-            PartInputType.SerialNumber => UpdateSerialNumber(),
-            PartInputType.ProductionLogId => _productionLogId,
-            _ => throw new InvalidOperationException("Unknown PartNode input type.")
-        };
+            await Task.Delay(300, _debounceCts.Token); // debounce
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        _isSearching = true;
+        StateHasChanged();
+
+        string? updatedValue;
+
+        switch (PartNode.InputType)
+        {
+            case PartInputType.SerialNumber:
+                updatedValue = string.IsNullOrWhiteSpace(_serialNumber) ? null : _serialNumber;
+
+                PartTraceabilityService.UpdateSerialNumber(LogIndex, PartNode.Id, updatedValue);
+
+                if (updatedValue is not null)
+                    await ValidateSerialAsync(updatedValue);
+                else
+                {
+                    _validationMessage = null;
+                    _validationMessageType = default;
+                }
+
+                break;
+
+            case PartInputType.Tag:
+                updatedValue = string.IsNullOrWhiteSpace(_tagCode) ? null : _tagCode;
+
+                if (updatedValue is not null)
+                    await ValidateTagAsync(updatedValue);
+                else
+                {
+                    _validationMessage = null;
+                    _validationMessageType = default;
+                }
+
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+
+        _isSearching = false;
+        StateHasChanged();
 
         if (AfterInputChanged.HasDelegate)
             await AfterInputChanged.InvokeAsync((PartNode, updatedValue));
     }
-
-    private string? UpdateSerialNumber()
+    
+    private async Task ValidateTagAsync(string tag)
     {
-        if (SerializablePart is null)
-            return null;
+        _isSearching = true;
+        StateHasChanged();
 
-        SerializablePart.SerialNumber =
-            string.IsNullOrWhiteSpace(_serialNumber) ? null : _serialNumber;
+        var currentLogIndex = LogIndex;
+        var currentNodeId = PartNode.Id;
 
-        return SerializablePart.SerialNumber;
+        var resolved = await PartTraceabilityService.UpdateTagCodeAsync(currentLogIndex, currentNodeId, tag, PartNode.PartDefinitionId);
+        
+        if (currentLogIndex != LogIndex || currentNodeId != PartNode.Id)
+            return;
+
+        _validationMessage = resolved ? "Valid part found" : "No valid part found!";
+        _validationMessageType = resolved ? ValidationMessageType.Success : ValidationMessageType.Error;
+
+        _isSearching = false;
+        StateHasChanged();
+    }
+    
+    private string? BoundValue
+    {
+        get => PartNode.InputType switch
+        {
+            PartInputType.SerialNumber => _serialNumber,
+            PartInputType.Tag => _tagCode,
+            _ => null
+        };
+        set
+        {
+            switch (PartNode.InputType)
+            {
+                case PartInputType.SerialNumber:
+                    _serialNumber = value;
+                    break;
+                case PartInputType.Tag:
+                    _tagCode = value;
+                    break;
+            }
+        }
+    }
+    
+    private string GetInputClass()
+    {
+        var baseClass = "form-control";
+
+        if (!string.IsNullOrWhiteSpace(BoundValue))
+        {
+            if (_validationMessageType == ValidationMessageType.Success ||
+                _validationMessageType == ValidationMessageType.Info)
+            {
+                return $"{baseClass} is-valid";
+            }
+
+            if (_validationMessageType == ValidationMessageType.Error)
+            {
+                return $"{baseClass} is-invalid";
+            }
+        }
+
+        return baseClass;
+    }
+    
+    private async Task ValidateSerialAsync(string serial)
+    {
+        _isSearching = true;
+        StateHasChanged();
+
+        var currentLogIndex = LogIndex;
+        var currentNodeId = PartNode.Id;
+
+        if (PartNode.PartDefinition?.IsSerialNumberUnique == true)
+        {
+            var exists = await SerializablePartService.ExistsAsync(
+                PartNode.PartDefinition.Id,
+                serial);
+
+            if (currentLogIndex != LogIndex || currentNodeId != PartNode.Id)
+                return;
+
+            if (exists)
+            {
+                _validationMessage = "Serial number already exists";
+                _validationMessageType = ValidationMessageType.Info; // 👈 NOT error
+            }
+            else
+            {
+                _validationMessage = "Serial number is new";
+                _validationMessageType = ValidationMessageType.Success;
+            }
+        }
+        else
+        {
+            // No uniqueness requirement → always valid if entered
+            _validationMessage = null;
+            _validationMessageType = ValidationMessageType.Success;
+        }
+
+        _isSearching = false;
+        StateHasChanged();
     }
 }

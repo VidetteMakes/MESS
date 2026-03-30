@@ -250,4 +250,19 @@ public interface IPartDefinitionService
     /// </remarks>
     Task<DeletePartDefinitionResponse> DeleteAsync(PartDefinition partDefinition);
 
+    /// <summary>
+    /// Safely merges two PartDefinitions into one.
+    /// All references to <paramref name="source"/> will be reassigned to <paramref name="target"/>.
+    /// </summary>
+    /// <param name="target">The PartDefinition to keep.</param>
+    /// <param name="source">The PartDefinition to merge and remove.</param>
+    /// <returns>True if the merge succeeded; false otherwise.</returns>
+    Task<bool> MergePartDefinitionsAsync(PartDefinition target, PartDefinition source);
+
+    /// <summary>
+    /// Batch merges duplicate PartDefinitions that share the same Name (case-insensitive).
+    /// Prefers the PartDefinition with both Name and Number as the target.
+    /// </summary>
+    /// <returns>The number of merges performed.</returns>
+    Task<int> BatchMergeByNameAsync(IProgress<int>? progress = null);
 }

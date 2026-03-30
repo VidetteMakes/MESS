@@ -1,5 +1,4 @@
 using MESS.Data.Models;
-using MESS.Services.DTOs.PartDefinitions;
 using MESS.Services.DTOs.WorkInstructions.Nodes.Form;
 
 namespace MESS.Services.DTOs.WorkInstructions.Nodes.PartNodes.Form;
@@ -37,6 +36,18 @@ public class PartNodeFormDTO : WorkInstructionNodeFormDTO
     /// the corresponding <see cref="PartDefinition"/>.
     /// </remarks>
     public string? Number { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a value indicating whether instances (serializable parts) of this part definition
+    /// can be uniquely identified by their serial number.
+    /// </summary>
+    /// <remarks>
+    /// When set to <c>true</c>, each serial number is expected to be unique for this part
+    /// definition and may be used as a sole identifier for individual part instances.
+    /// When <c>false</c>, serial numbers are not guaranteed to be unique and additional
+    /// identifying information may be required.
+    /// </remarks>
+    public bool IsSerialNumberUnique { get; set; } = true;
 
     /// <summary>
     /// Indicates what kind of input this part node expects (for example,

@@ -1,5 +1,4 @@
 using MESS.Data.Models;
-using MESS.Services.DTOs.PartDefinitions;
 using MESS.Services.DTOs.WorkInstructions.Nodes.PartNodes.Form;
 
 namespace MESS.Services.DTOs.WorkInstructions.Nodes.PartNodes.File;
@@ -23,6 +22,7 @@ public static class PartNodeFileDTOMapper
             Position = entity.Position,
             PartName = entity.PartDefinition.Name,
             PartNumber = entity.PartDefinition.Number,
+            IsSerialNumberUnique = entity.PartDefinition.IsSerialNumberUnique,
             InputType = entity.InputType
         };
     }
@@ -71,6 +71,7 @@ public static class PartNodeFileDTOMapper
             NodeType = dto.NodeType,
             Name = dto.PartName,
             Number = dto.PartNumber,
+            IsSerialNumberUnique = dto.IsSerialNumberUnique,
             InputType = dto.InputType
         };
     }

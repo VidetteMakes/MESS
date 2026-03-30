@@ -36,14 +36,33 @@
                                type="checkbox"
                                role="switch"
                                id="inputTypeSwitch_@PartNode!.ClientId"
-                               checked="@(PartNode.InputType == PartInputType.ProductionLogId)"
+                               checked="@(PartNode.InputType == PartInputType.Tag)"
                                @onclick="ToggleInputType" />
 
                         <label class="form-check-label toggle-label"
                                for="inputTypeSwitch_@PartNode.ClientId">
                             @(PartNode.InputType == PartInputType.SerialNumber
                                 ? "Serial"
-                                : "Production Log")
+                                : "Tag")
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Serial Number Uniqueness Toggle -->
+                <div class="d-flex flex-column align-items-start ms-3 me-3">
+                    <label class="form-label mb-1">Serial Uniqueness</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input toggle-switch"
+                               type="checkbox"
+                               role="switch"
+                               id="serialUniqueSwitch_@PartNode!.ClientId"
+                               checked="@(PartNode.IsSerialNumberUnique)"
+                               disabled="@(PartNode.InputType != PartInputType.SerialNumber)"
+                               @onclick="ToggleSerialUniqueness" />
+
+                        <label class="form-check-label toggle-label"
+                               for="serialUniqueSwitch_@PartNode.ClientId">
+                            @(PartNode.IsSerialNumberUnique ? "Unique" : "Non-Unique")
                         </label>
                     </div>
                 </div>
@@ -56,7 +75,6 @@
 </div>
 
 @code {
-
     [Parameter]
     public EventCallback<(WorkInstructionNodeFormDTO node, string action)> OnNodeAction { get; set; }
 
@@ -89,8 +107,18 @@
             return;
 
         PartNode.InputType = PartNode.InputType == PartInputType.SerialNumber
-            ? PartInputType.ProductionLogId
+            ? PartInputType.Tag
             : PartInputType.SerialNumber;
+
+        await NotifyChangedAsync();
+    }
+    
+    private async Task ToggleSerialUniqueness()
+    {
+        if (PartNode is null)
+            return;
+
+        PartNode.IsSerialNumberUnique = !PartNode.IsSerialNumberUnique;
 
         await NotifyChangedAsync();
     }

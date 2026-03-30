@@ -1,4 +1,5 @@
 using MESS.Data.Models;
+using MESS.Services.CRUD.Tags;
 using MESS.Services.DTOs;
 
 namespace MESS.Services.CRUD.SerializableParts;
@@ -77,31 +78,6 @@ public interface ISerializablePartService
     Task<List<SerializablePart>> GetInstalledForProductionLogAsync(int productionLogId);
     
     /// <summary>
-    /// Retrieves all <see cref="SerializablePart"/> entities that were installed during the specified production logs,
-    /// filtered to only include parts whose <see cref="PartDefinition.Id"/> exists in the provided set of expected part definitions.
-    /// </summary>
-    /// <param name="productionLogIds">
-    /// A list of production log IDs to query. Each ID represents a prior production event to consider for installed parts.
-    /// </param>
-    /// <param name="expectedPartDefinitionIds">
-    /// A set of <see cref="PartDefinition.Id"/> values representing the part definitions expected for the current work instruction.
-    /// Only installed parts matching these definitions will be returned.
-    /// </param>
-    /// <returns>
-    /// A task representing the asynchronous operation. The result is a list of <see cref="InstalledPartResult"/> records,
-    /// each containing the <see cref="SerializablePart"/> and its associated <c>ProductionLogId</c>.
-    /// The order of results is not guaranteed.
-    /// </returns>
-    /// <remarks>
-    /// This method is used to efficiently fetch only relevant installed parts from multiple production logs
-    /// without performing a separate query per production log. It is optimized for batch loading of serializable parts
-    /// to populate in-memory data structures for traceability or work instruction editing.
-    /// </remarks>
-    Task<List<InstalledPartResult>> GetInstalledForProductionLogsAsync(
-        List<int> productionLogIds,
-        HashSet<int> expectedPartDefinitionIds);
-    
-    /// <summary>
     /// Retrieves the <see cref="SerializablePart"/> that was <b>produced</b> during
     /// the specified <see cref="ProductionLog"/>.
     /// </summary>
@@ -157,4 +133,37 @@ public interface ISerializablePartService
     /// <see cref="SerializablePart"/> exists; otherwise, <c>false</c>.
     /// </returns>
     Task<bool> ExistsAsync(int partDefinitionId, string serialNumber);
+
+    /// <summary>
+    /// Retrieves the <see cref="SerializablePart"/> assigned to a tag identified by its code.
+    /// </summary>
+    /// <param name="tagCode">
+    /// The unique human-readable code of the tag.
+    /// </param>
+    /// <returns>
+    /// A task representing the asynchronous operation. The task result contains:
+    /// <list type="bullet">
+    /// <item>The <see cref="SerializablePart"/> assigned to the tag, including its <see cref="PartDefinition"/>.</item>
+    /// <item><c>null</c> if the tag does not exist or has no part assigned.</item>
+    /// </list>
+    /// </returns>
+    /// <remarks>
+    /// This method resolves the tag code via <see cref="ITagService"/> and then retrieves the
+    /// associated <see cref="SerializablePart"/> using the database context.  
+    /// The returned entity is detached from tracking.
+    /// </remarks>
+    public Task<SerializablePart?> GetByTagCodeAsync(string tagCode);
+
+    /// <summary>
+    /// Attempts to resolve a tag code to the associated <see cref="SerializablePart"/> ID.
+    /// </summary>
+    /// <param name="tagCode">The tag code entered by the user.</param>
+    /// <param name="expectedPartDefinitionId">
+    /// The expected <see cref="PartDefinition"/> ID that the resolved part should match.
+    /// This is used to validate that the tag corresponds to the correct type of part.
+    /// </param>
+    /// <returns>
+    /// The ID of the associated <see cref="SerializablePart"/> if found; otherwise, <c>null</c>.
+    /// </returns>
+    Task<int?> TryResolveTagAsync(string tagCode, int expectedPartDefinitionId);
 }

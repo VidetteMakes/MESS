@@ -2,7 +2,6 @@
 @using MESS.Services.UI.ProductionLogEvent
 
 @inject IProductionLogEventService ProductionLogEventService
-@inject IPartTraceabilityService PartTraceabilityService
 
 @implements IDialogContentComponent
 
@@ -86,7 +85,8 @@
             .ToList();
 
         // Load installed parts into memory using the service
-        await PartTraceabilityService.LoadInstalledPartsIntoMemoryAsync(ids);
+        //TODO
+        //await PartTraceabilityService.LoadInstalledPartsIntoMemoryAsync(ids);
         
         IsProcessing = false;
 

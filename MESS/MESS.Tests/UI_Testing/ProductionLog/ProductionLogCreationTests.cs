@@ -1,13 +1,12 @@
 ﻿using System.Security.Claims;
 using Bunit;
-using Bunit.TestDoubles;
 using MESS.Blazor.Components.Pages.ProductionLog;
 using MESS.Services.CRUD.ApplicationUser;
+using MESS.Services.CRUD.PartTraceability;
 using MESS.Services.CRUD.Products;
 using MESS.Services.CRUD.ProductionLogs;
 using MESS.Services.CRUD.WorkInstructions;
 using MESS.Services.DTOs.ProductionLogs.Cache;
-using MESS.Services.DTOs.ProductionLogs.LogSteps.Cache;
 using MESS.Services.CRUD.ProductionLogParts;
 using MESS.Services.DTOs.ProductionLogs.CreateRequest;
 using MESS.Services.UI.SessionManager;
@@ -26,7 +25,6 @@ using Moq;
 using Xunit.Abstractions;
 
 namespace MESS.Tests.UI_Testing.ProductionLog;
-using Data.Models;
 
 public class ProductionLogCreationTests : BunitContext
 {
@@ -35,11 +33,12 @@ public class ProductionLogCreationTests : BunitContext
     private readonly Mock<IWorkInstructionService> _workInstructionServiceMock;
     private readonly Mock<IProductService> _productServiceMock;
     private readonly Mock<IApplicationUserService> _userServiceMock;
+    private readonly Mock<IPartTraceabilityPersistenceService> _partTraceabilityPersistenceServiceMock;
+    private readonly Mock<IPartTraceabilityStateService> _partTraceabilityServiceMock;
     private readonly Mock<IDialogService> _dialogServiceMock;
 
     private readonly Mock<ILocalCacheManager> _localCacheManagerMock;
     private readonly Mock<IProductionLogPartService> _serializationServiceMock;
-    private readonly Mock<IPartTraceabilityService> _partTraceabilityServiceMock;
     private readonly Mock<IProductionLogEventService> _productionLogEventServiceMock;
     private readonly Mock<AuthenticationStateProvider> _authProviderMock;
     private readonly Mock<ISessionManager> _sessionManagerMock;
@@ -58,7 +57,6 @@ public class ProductionLogCreationTests : BunitContext
         _userServiceMock = new Mock<IApplicationUserService>();
         _localCacheManagerMock = new Mock<ILocalCacheManager>();
         _serializationServiceMock = new Mock<IProductionLogPartService>();
-        _partTraceabilityServiceMock = new Mock<IPartTraceabilityService>();
         _productionLogEventServiceMock = new Mock<IProductionLogEventService>();
         _dialogServiceMock = new Mock<IDialogService>();
         _authProviderMock = new Mock<AuthenticationStateProvider>();
@@ -67,9 +65,10 @@ public class ProductionLogCreationTests : BunitContext
         _jsModuleMock = new Mock<IJSObjectReference>();
         _toastServiceMock = new Mock<IToastService>();
         _qrCodeServiceMock = new Mock<IQrCodeService>();
+        _partTraceabilityPersistenceServiceMock = new Mock<IPartTraceabilityPersistenceService>();
+        _partTraceabilityServiceMock = new Mock<IPartTraceabilityStateService>();
             
         Services.AddSingleton(_productionLogServiceMock.Object);
-        Services.AddSingleton(_partTraceabilityServiceMock.Object);
         Services.AddSingleton(_workInstructionServiceMock.Object);
         Services.AddSingleton(_productServiceMock.Object);
         Services.AddSingleton(_userServiceMock.Object);
@@ -82,6 +81,8 @@ public class ProductionLogCreationTests : BunitContext
         Services.AddSingleton(_jsRuntimeMock.Object);
         Services.AddSingleton(_toastServiceMock.Object);
         Services.AddSingleton(_qrCodeServiceMock.Object);
+        Services.AddSingleton(_partTraceabilityPersistenceServiceMock.Object);
+        Services.AddSingleton(_partTraceabilityServiceMock.Object);
             
         _jsRuntimeMock.Setup(js => js.InvokeAsync<IJSObjectReference>(
             "import", It.IsAny<object[]>())).ReturnsAsync(_jsModuleMock.Object);
@@ -94,11 +95,10 @@ public class ProductionLogCreationTests : BunitContext
     private void SetupAuthenticationState()
     {
         var authState = new AuthenticationState(
-            new ClaimsPrincipal(new ClaimsIdentity(new[]
-            {
+            new ClaimsPrincipal(new ClaimsIdentity([
                 new Claim(ClaimTypes.Name, "testuser"),
-                new Claim(ClaimTypes.NameIdentifier, "user123"),
-            }, "testauth")));
+                new Claim(ClaimTypes.NameIdentifier, "user123")
+            ], "testauth")));
 
         _authProviderMock.Setup(p => p.GetAuthenticationStateAsync())
             .ReturnsAsync(authState);
@@ -131,14 +131,13 @@ public class ProductionLogCreationTests : BunitContext
         authContext.SetRoles("Technician");
 
         _localCacheManagerMock.Setup(m => m.GetProductionLogBatchAsync())
-            .ReturnsAsync(new List<ProductionLogCacheDTO> 
-            {
-                new ProductionLogCacheDTO 
+            .ReturnsAsync([
+                new ProductionLogCacheDTO
                 {
                     ProductionLogId = 1,
-                    LogSteps = new List<LogStepCacheDTO>()
+                    LogSteps = []
                 }
-            });
+            ]);
 
         // Render the component
         var cut = Render<Create>();

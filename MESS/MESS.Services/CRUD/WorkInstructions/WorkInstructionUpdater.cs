@@ -238,7 +238,8 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         var part = await _partDefinitionResolver.ResolveAsync(
                        context,
                        dto.Name,
-                       dto.Number)
+                       dto.Number,
+                       dto.IsSerialNumberUnique)
                    ?? throw new InvalidOperationException(
                        $"Failed to resolve PartDefinition '{dto.Name}' '{dto.Number}'.");
 
@@ -253,7 +254,8 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         var part = await _partDefinitionResolver.ResolveAsync(
                        context,
                        dto.Name,
-                       dto.Number)
+                       dto.Number,
+                       dto.IsSerialNumberUnique)
                    ?? throw new InvalidOperationException(
                        $"Failed to resolve PartDefinition '{dto.Name}' '{dto.Number}'.");
 

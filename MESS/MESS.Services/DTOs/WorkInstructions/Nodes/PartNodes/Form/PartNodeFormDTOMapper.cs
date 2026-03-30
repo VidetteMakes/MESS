@@ -47,7 +47,8 @@ public static class PartNodeFormDTOMapper
             NodeType = entity.NodeType,
             InputType = entity.InputType,
             Name = entity.PartDefinition.Name,
-            Number = entity.PartDefinition.Number
+            Number = entity.PartDefinition.Number,
+            IsSerialNumberUnique = entity.PartDefinition.IsSerialNumberUnique,
         };
     }
     
@@ -75,7 +76,8 @@ public static class PartNodeFormDTOMapper
             NodeType = form.NodeType,
             PartName = form.Name,
             PartNumber = form.Number,
-            InputType = form.InputType
+            InputType = form.InputType,
+            IsSerialNumberUnique =  form.IsSerialNumberUnique,
         };
     }
 
@@ -109,6 +111,7 @@ public static class PartNodeFormDTOMapper
             {
                 Name = dto.Name,
                 Number = dto.Number,
+                IsSerialNumberUnique = dto.IsSerialNumberUnique
             }
         };
     }

@@ -1,4 +1,5 @@
-﻿using MESS.Services.DTOs.ProductionLogs.Cache;
+﻿using MESS.Blazor.Components.Dialogs;
+using MESS.Services.DTOs.ProductionLogs.Cache;
 using MESS.Services.DTOs.ProductionLogs.Form;
 using MESS.Services.DTOs.ProductionLogs.LogSteps.Form;
 using Microsoft.AspNetCore.Components;
@@ -23,6 +24,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
     private const string Title = "Production Log";
     private bool IsLoading { get; set; } = true;
     private ConfirmationModal? popupRef;
+    private MessageModal? errorPopupRef;
     private bool IsWorkflowActive { get; set; }
     private Status WorkInstructionStatus { get; set; } = Status.NotStarted;
     private bool IsSaved { get; set; }
@@ -106,26 +108,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
         
         ProductionLogPartService.CurrentProductNumberChanged += HandleProductNumberChanged;
         
-        if (ActiveWorkInstruction != null)
-        {
-            var partNodes = ActiveWorkInstruction.Nodes.OfType<PartNode>();
-    
-            for (int i = 0; i < ProductionLogBatch.Logs.Count; i++)
-            {
-                foreach (var partNode in partNodes)
-                {
-                    // This will ensure a SerializablePart exists in memory for this log and node
-                    PartTraceabilityService.GetSerializablePart(i, partNode);
-                }
-                
-                //Setting Produced Parts for each production log.
-                if (ActiveWorkInstruction?.PartProduced is {} produced)
-                {
-                    PartTraceabilityService.SetProducedPart(i, produced);
-                }
-            }
-        }
-        
         IsLoading = false;
     }
     
@@ -178,7 +160,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
             await SetSelectedWorkInstructionId(null);
             ProductionLogEventService.SetCurrentWorkInstructionName(string.Empty);
 
-            PartTraceabilityService.ClearAll();
+            PartTraceabilityService.Clear();
             return;
         }
 
@@ -192,7 +174,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
             await LocalCacheManager.ClearProductionLogBatchAsync();
             ProductionLogBatch.Logs.Clear();
             await ProductionLogEventService.SetCurrentProductionLogs([]);
-            PartTraceabilityService.ClearAll();
+            PartTraceabilityService.Clear();
 
             // Set the new work instruction
             ActiveWorkInstruction = workInstruction;
@@ -203,18 +185,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
 
             // Add new logs for the new instruction
             AddProductionLogs(BatchSize);
-            
-            // Reinitialize traceability parts for part nodes
-            if (ActiveWorkInstruction != null)
-            {
-                var partNodes = ActiveWorkInstruction.Nodes.OfType<PartNode>();
-                for (int i = 0; i < ProductionLogBatch.Logs.Count; i++)
-                    foreach (var pn in partNodes)
-                        PartTraceabilityService.GetSerializablePart(i, pn);
-            }
-            
-            // Setting Produced Parts
-            ApplyProducedPartToAllLogs();
         }
     }
 
@@ -231,7 +201,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
             await LocalCacheManager.ClearProductionLogBatchAsync();
             ProductionLogBatch.Logs.Clear();
             await ProductionLogEventService.SetCurrentProductionLogs([]);
-            PartTraceabilityService.ClearAll();
+            PartTraceabilityService.Clear();
 
             await SetActiveWorkInstruction(-1);
             await LocalCacheManager.SetActiveProductAsync(null);
@@ -246,7 +216,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
         await LocalCacheManager.ClearProductionLogBatchAsync();
         ProductionLogBatch.Logs.Clear();
         await ProductionLogEventService.SetCurrentProductionLogs([]);
-        PartTraceabilityService.ClearAll();
+        PartTraceabilityService.Clear();
 
         // Proceed with setting new state
         ActiveProduct = product;
@@ -302,12 +272,10 @@ public partial class Create : ComponentBase, IAsyncDisposable
             // Remove matching traceability entries
             for (var index = newSize; index < currentCount; index++)
             {
-                PartTraceabilityService.RemoveLogIndex(index);
+                PartTraceabilityService.RemoveLog(index);
             }
 
             await ProductionLogEventService.SetCurrentProductionLogs(ProductionLogBatch.Logs);
-            
-            ApplyProducedPartToAllLogs();
         }
     }
 
@@ -393,6 +361,15 @@ public partial class Create : ComponentBase, IAsyncDisposable
             return;
         }
         
+        // Stop submission if there are unresolved tags
+        if (await PartTraceabilityService.HasUnresolvedTagsAsync())
+        {
+            errorPopupRef?.Show(
+                "One or more tag codes could not be resolved. Please fix these before submitting.",
+                "Invalid Tags");
+            return;
+        }
+        
         var partNodes = ActiveWorkInstruction.Nodes.Where(node => node.NodeType == WorkInstructionNodeType.Part);
 
         var totalPartsNeeded = 0;
@@ -411,7 +388,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
 
         if (!allStepsHavePartsNeeded)
         {
-            popupRef?.Show("There are parts without serial numbers. Are you sure you want to submit this log?");
+            popupRef?.Show("There are empty part entries. Are you sure you want to submit this log?");
         }
         else
         {
@@ -490,10 +467,37 @@ public partial class Create : ComponentBase, IAsyncDisposable
             // Add the new log to the session
             await SessionManager.AddProductionLogAsync(productionLog.Id);
         }
+        
+        // --- Part Traceability Persistence ---
+        // 1. Map UI log index → DB ProductionLogId
+        var logIndexToProductionLogId = ProductionLogEventService.CurrentProductionLogs
+            .Select((log, index) => new { index, log.Id })
+            .ToDictionary(x => x.index, x => x.Id);
 
-        await PartTraceabilityService.PersistAsync(ProductionLogBatch.Logs);
-        Console.WriteLine(PartTraceabilityService.DumpPartTraceability());
+        // 2. Create snapshots from UI state
+        var snapshots = logIndexToProductionLogId.Keys
+            .Select(logIndex => PartTraceabilityService.CreateSnapshot(logIndex))
+            .ToList();
 
+        // 3. Build operations
+        var operations = PartTraceabilityPersistenceService.BuildOperations(
+            snapshots,
+            logIndexToProductionLogId);
+
+        // 4. Persist operations
+        try
+        {
+            foreach (var operation in operations)
+            {
+                await PartTraceabilityPersistenceService.PersistOperationBatchedAsync(operation);
+            }
+        }
+        catch (Exception)
+        {
+            ToastService.ShowError("Failed to persist part traceability data.");
+            throw;
+        }
+        
         // Reset the local storage values
         await LocalCacheManager.ClearProductionLogBatchAsync();
         
@@ -516,15 +520,13 @@ public partial class Create : ComponentBase, IAsyncDisposable
     private async Task ResetFormState()
     {
         // Clear the in-memory part tracking
-        PartTraceabilityService.ClearAll();
+        PartTraceabilityService.Clear();
         
         // Reset the ProductionLogBatch Object
         ProductionLogBatch = new ProductionLogBatch();
         
         // Reinitialize the form with the current batch size
         AddProductionLogs(BatchSize);
-        
-        ApplyProducedPartToAllLogs();
 
         // Notify the event service with the empty list
         await ProductionLogEventService.SetCurrentProductionLogs(ProductionLogBatch.Logs);
@@ -664,27 +666,9 @@ public partial class Create : ComponentBase, IAsyncDisposable
             ProductionLogBatch.Logs.Add(emptyLog);
             
             if (ActiveWorkInstruction == null) continue;
-
-            foreach (var partNode in ActiveWorkInstruction.Nodes.OfType<PartNode>())
-            {
-                // Ensure a SerializablePart exists in memory for this log index and node
-                PartTraceabilityService.GetSerializablePart(ProductionLogBatch.Logs.Count - 1, partNode);
-            }
         }
 
         // Notify downstream services
         ProductionLogEventService.SetCurrentProductionLogs(ProductionLogBatch.Logs);
-        
-        // After creating each new log:
-        ApplyProducedPartToAllLogs();
-    }
-    
-    private void ApplyProducedPartToAllLogs()
-    {
-        if (ActiveWorkInstruction?.PartProduced is not {} produced)
-            return;
-
-        for (int i = 0; i < ProductionLogBatch.Logs.Count; i++)
-            PartTraceabilityService.SetProducedPart(i, produced);
     }
 }

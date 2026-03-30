@@ -286,6 +286,7 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
                 Position = partNode.Position,
                 Name = partNode.Name,
                 Number = partNode.Number,
+                IsSerialNumberUnique = partNode.IsSerialNumberUnique,
                 InputType = partNode.InputType
             },
             StepNodeFormDTO stepNode => new StepNodeFormDTO

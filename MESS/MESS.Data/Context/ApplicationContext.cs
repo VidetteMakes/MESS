@@ -62,6 +62,11 @@ public class ApplicationContext
     /// DbSet for SerializableParts.
     /// </summary>
     public virtual DbSet<SerializablePart> SerializableParts { get; set; } = null!;
+
+    /// <summary>
+    /// DbSet for SerializablePartRelationships
+    /// </summary>
+    public virtual DbSet<SerializablePartRelationship> SerializablePartRelationships { get; set; } = null!;
     
     /// <summary>
     /// DbSet for Tags.
@@ -106,6 +111,10 @@ public class ApplicationContext
             .HasIndex(p => p.Name)
             .IsUnique()
             .HasFilter("\"Number\" IS NULL OR \"Number\" = ''");
+        
+        modelBuilder.Entity<PartDefinition>()
+            .Property(p => p.IsSerialNumberUnique)
+            .HasDefaultValue(true);
         
         modelBuilder.Entity<Step>()
             .ToTable("Steps");

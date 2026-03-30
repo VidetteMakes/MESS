@@ -45,7 +45,8 @@ public class PartNodeResolver : IPartNodeResolver
             var part = await _partDefinitionResolver.ResolveAsync(
                 context,
                 pending.Name,
-                pending.Number);
+                pending.Number,
+                pending.IsSerialNumberUnique);
 
             if (part == null)
                 throw new InvalidOperationException(

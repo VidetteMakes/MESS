@@ -1,0 +1,88 @@
+<div class="toast-container position-fixed top-50 start-50 translate-middle p-3 @(IsVisible ? "d-block" : "d-none")"
+     data-bs-autohide="false">
+    
+    <div class="toast show confirmation-toast border-danger" role="alert" aria-live="assertive" aria-atomic="true">
+        
+        <div class="toast-header">
+            <strong class="me-auto">@HeaderText</strong>
+            <button type="button" class="btn-close" aria-label="Close" @onclick="Close"></button>
+        </div>
+
+        <div class="toast-body">
+            <p class="mb-4">@BodyText</p>
+
+            <div class="d-flex justify-content-end">
+                <button type="button" class="btn btn-danger" @onclick="Acknowledge">
+                    OK
+                </button>
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Determines whether the message modal is visible.
+    /// </summary>
+    [Parameter]
+    public bool IsVisible { get; set; }
+
+    /// <summary>
+    /// Event callback that is invoked when the visibility state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> IsVisibleChanged { get; set; }
+
+    /// <summary>
+    /// The text displayed in the modal header.
+    /// </summary>
+    [Parameter]
+    public string? HeaderText { get; set; }
+
+    /// <summary>
+    /// The text displayed in the modal body.
+    /// </summary>
+    [Parameter]
+    public string? BodyText { get; set; }
+
+    /// <summary>
+    /// Optional callback invoked when the user acknowledges the message.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnAcknowledge { get; set; }
+
+    /// <summary>
+    /// Shows the message modal with the specified body and optional header text.
+    /// </summary>
+    /// <param name="bodyText">The text to display in the modal body.</param>
+    /// <param name="headerText">Optional text to display in the modal header.</param>
+    public void Show(string bodyText, string headerText = "")
+    {
+        HeaderText = headerText;
+        BodyText = bodyText;
+        IsVisible = true;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Closes the message modal by hiding it and clearing its content.
+    /// </summary>
+    public void Close()
+    {
+        HeaderText = string.Empty;
+        BodyText = string.Empty;
+        IsVisible = false;
+        StateHasChanged();
+    }
+
+    private async Task Acknowledge()
+    {
+        Close();
+
+        if (OnAcknowledge.HasDelegate)
+        {
+            await OnAcknowledge.InvokeAsync();
+        }
+    }
+}

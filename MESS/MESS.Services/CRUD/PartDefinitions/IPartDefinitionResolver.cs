@@ -31,6 +31,9 @@ public interface IPartDefinitionResolver
     /// <param name="number">
     /// The optional part number used to further distinguish the part.
     /// </param>
+    /// <param name="isSerialNumberUnique">
+    /// The value to set for the <see cref="PartDefinition.IsSerialNumberUnique"/> property
+    /// </param>
     /// <returns>
     /// A task that resolves to an existing or newly created
     /// <see cref="PartDefinition"/> entity, or <c>null</c> if the
@@ -39,5 +42,6 @@ public interface IPartDefinitionResolver
     Task<PartDefinition?> ResolveAsync(
         ApplicationContext context,
         string? name,
-        string? number);
+        string? number,
+        bool isSerialNumberUnique = true);
 }

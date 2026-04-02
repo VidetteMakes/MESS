@@ -1,0 +1,371 @@
+@page "/operator-training"
+@layout PhoebeLayout
+@attribute [Authorize(Roles = "Operator, Technician, Administrator")]
+@using System.ComponentModel.DataAnnotations
+@using MESS.Blazor.Components.Layout
+@using MESS.Data.Models
+@using MESS.Services.CRUD.OperatorTraining
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IOperatorTrainingService OperatorTrainingService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IToastService ToastService
+
+<PageTitle>Operator Training</PageTitle>
+
+<AuthorizeView Roles="Operator, Technician, Administrator">
+    <Authorizing>
+        <p>Authorizing...</p>
+    </Authorizing>
+    <NotAuthorized>
+        <div class="alert alert-warning">You are not authorized to view this page.</div>
+    </NotAuthorized>
+    <Authorized Context="authState">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+            <div>
+                <h3 class="mb-1">Operator Training</h3>
+                <p class="text-muted mb-0">Training material for operators, technicians, and administrators.</p>
+            </div>
+            @if (IsAdministrator)
+            {
+                <button class="btn btn-primary" @onclick="BeginCreate">
+                    <i class="bi bi-plus-circle me-1"></i> New Module
+                </button>
+            }
+        </div>
+
+        @if (IsLoading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <p class="mt-2 mb-0">Loading training modules...</p>
+            </div>
+        }
+        else
+        {
+            <div class="row g-4">
+                <div class="col-lg-4">
+                    <div class="card h-100 shadow-sm">
+                        <div class="card-header">
+                            <strong>Modules</strong>
+                        </div>
+                        <div class="list-group list-group-flush">
+                            @if (Modules.Count == 0)
+                            {
+                                <div class="list-group-item text-muted">No training modules available.</div>
+                            }
+                            else
+                            {
+                                @foreach (var module in Modules)
+                                {
+                                    var selectedClass = SelectedModule?.Id == module.Id ? "active" : string.Empty;
+                                    <button type="button"
+                                            class="list-group-item list-group-item-action @selectedClass"
+                                            @onclick="() => SelectModule(module.Id)">
+                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <div>
+                                                <div class="fw-semibold">@module.Title</div>
+                                                @if (!string.IsNullOrWhiteSpace(module.Summary))
+                                                {
+                                                    <div class="small opacity-75">@module.Summary</div>
+                                                }
+                                            </div>
+                                            @if (IsAdministrator && !module.IsPublished)
+                                            {
+                                                <span class="badge text-bg-warning">Draft</span>
+                                            }
+                                        </div>
+                                    </button>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-8">
+                    @if (IsAdministrator && IsEditing)
+                    {
+                        <div class="card shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>@(Editor.Id == 0 ? "Create Module" : "Edit Module")</strong>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Cancel</button>
+                            </div>
+                            <div class="card-body">
+                                <EditForm Model="Editor" OnValidSubmit="SaveAsync" OnInvalidSubmit="HandleInvalidSubmit">
+                                    <DataAnnotationsValidator />
+                                    <ValidationSummary />
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Title</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Title" />
+                                        <ValidationMessage For="@(() => Editor.Title)" />
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Summary</label>
+                                        <InputText class="form-control" @bind-Value="Editor.Summary" />
+                                        <ValidationMessage For="@(() => Editor.Summary)" />
+                                    </div>
+
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-sm-4">
+                                            <label class="form-label">Display Order</label>
+                                            <InputNumber class="form-control" @bind-Value="Editor.DisplayOrder" />
+                                        </div>
+                                        <div class="col-sm-8 d-flex align-items-end">
+                                            <div class="form-check">
+                                                <InputCheckbox class="form-check-input" @bind-Value="Editor.IsPublished" />
+                                                <label class="form-check-label">Published</label>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Content</label>
+                                        <InputTextArea class="form-control training-editor" @bind-Value="Editor.Content" />
+                                        <ValidationMessage For="@(() => Editor.Content)" />
+                                    </div>
+
+                                    <button class="btn btn-success" type="submit" disabled="@(IsSaving || !IsFormValid())">
+                                        @if (IsSaving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        Save Module
+                                    </button>
+                                </EditForm>
+                            </div>
+                        </div>
+                    }
+                    else if (SelectedModule is not null)
+                    {
+                        <div class="card shadow-sm">
+                            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                                <div>
+                                    <strong>@SelectedModule.Title</strong>
+                                    @if (!SelectedModule.IsPublished && IsAdministrator)
+                                    {
+                                        <span class="badge text-bg-warning ms-2">Draft</span>
+                                    }
+                                </div>
+                                @if (IsAdministrator)
+                                {
+                                    <div class="d-flex gap-2">
+                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => BeginEdit(SelectedModule)">
+                                            Edit
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="DeleteAsync">
+                                            Delete
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                            <div class="card-body">
+                                @if (!string.IsNullOrWhiteSpace(SelectedModule.Summary))
+                                {
+                                    <p class="lead">@SelectedModule.Summary</p>
+                                }
+
+                                <div class="training-content">@SelectedModule.Content</div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="card shadow-sm">
+                            <div class="card-body text-muted">
+                                Select a training module to view its content.
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+<style>
+    .training-editor {
+        min-height: 18rem;
+    }
+
+    .training-content {
+        white-space: pre-wrap;
+        line-height: 1.6;
+    }
+</style>
+
+@code {
+    private readonly TrainingModuleEditor Editor = new();
+    private List<OperatorTrainingModule> Modules { get; set; } = [];
+    private OperatorTrainingModule? SelectedModule { get; set; }
+    private bool IsAdministrator { get; set; }
+    private bool IsEditing { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        IsAdministrator = authState.User.IsInRole("Administrator");
+
+        await LoadModulesAsync();
+    }
+
+    private async Task LoadModulesAsync()
+    {
+        IsLoading = true;
+
+        try
+        {
+            Modules = (await OperatorTrainingService.GetAllAsync(IsAdministrator)).ToList();
+            SelectedModule = SelectedModule is null
+                ? Modules.FirstOrDefault()
+                : Modules.FirstOrDefault(module => module.Id == SelectedModule.Id) ?? Modules.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load training modules: {ex.Message}");
+            Modules = [];
+            SelectedModule = null;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void SelectModule(int moduleId)
+    {
+        SelectedModule = Modules.FirstOrDefault(module => module.Id == moduleId);
+        IsEditing = false;
+        ResetEditor();
+    }
+
+    private void BeginCreate()
+    {
+        IsEditing = true;
+        SelectedModule = null;
+        ResetEditor();
+    }
+
+    private void BeginEdit(OperatorTrainingModule module)
+    {
+        Editor.Id = module.Id;
+        Editor.Title = module.Title;
+        Editor.Summary = module.Summary;
+        Editor.Content = module.Content;
+        Editor.DisplayOrder = module.DisplayOrder;
+        Editor.IsPublished = module.IsPublished;
+        IsEditing = true;
+    }
+
+    private void CancelEdit()
+    {
+        IsEditing = false;
+        ResetEditor();
+        SelectedModule ??= Modules.FirstOrDefault();
+    }
+
+    private async Task SaveAsync()
+    {
+        IsSaving = true;
+
+        try
+        {
+            var module = new OperatorTrainingModule
+            {
+                Id = Editor.Id,
+                Title = Editor.Title.Trim(),
+                Summary = Editor.Summary.Trim(),
+                Content = Editor.Content.Trim(),
+                DisplayOrder = Editor.DisplayOrder,
+                IsPublished = Editor.IsPublished
+            };
+
+            if (module.Id == 0)
+            {
+                SelectedModule = await OperatorTrainingService.CreateAsync(module);
+                ToastService.ShowSuccess("Training module created.");
+            }
+            else
+            {
+                SelectedModule = await OperatorTrainingService.UpdateAsync(module);
+                ToastService.ShowSuccess("Training module updated.");
+            }
+
+            IsEditing = false;
+            ResetEditor();
+            await LoadModulesAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save training module: {ex.Message}");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (SelectedModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var deletedModuleId = SelectedModule.Id;
+            await OperatorTrainingService.DeleteAsync(deletedModuleId);
+            ToastService.ShowSuccess("Training module deleted.");
+            SelectedModule = null;
+            await LoadModulesAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete training module: {ex.Message}");
+        }
+    }
+
+    private void HandleInvalidSubmit()
+    {
+        ToastService.ShowWarning("The training module form has validation errors. Check the highlighted fields.");
+    }
+
+    private bool IsFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(Editor.Title) && !string.IsNullOrWhiteSpace(Editor.Content);
+    }
+
+    private void ResetEditor()
+    {
+        Editor.Id = 0;
+        Editor.Title = string.Empty;
+        Editor.Summary = string.Empty;
+        Editor.Content = string.Empty;
+        Editor.DisplayOrder = Modules.Count == 0 ? 1 : Modules.Max(module => module.DisplayOrder) + 1;
+        Editor.IsPublished = true;
+    }
+
+    private sealed class TrainingModuleEditor
+    {
+        public int Id { get; set; }
+
+        [Required]
+        [StringLength(200)]
+        public string Title { get; set; } = string.Empty;
+
+        [StringLength(500)]
+        public string Summary { get; set; } = string.Empty;
+
+        [Required]
+        public string Content { get; set; } = string.Empty;
+
+        [Range(0, int.MaxValue)]
+        public int DisplayOrder { get; set; }
+
+        public bool IsPublished { get; set; } = true;
+    }
+}

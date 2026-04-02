@@ -45,7 +45,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
     private string? ActiveLineOperator { get; set; }
     private string? ProductSerialNumber { get; set; }
     
-    private IJSObjectReference? scrollToModule;
+
     
     private Func<List<ProductionLogFormDTO>, Task>? _autoSaveHandler;
     
@@ -111,15 +111,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
         IsLoading = false;
     }
     
-    /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            scrollToModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import",
-                "./Scripts/ScrollTo.js");
-        }
-    }
+
     
     private async Task<List<ProductionLogFormDTO>> LoadCachedFormsAsync()
     {
@@ -535,10 +527,7 @@ public partial class Create : ComponentBase, IAsyncDisposable
         WorkInstructionStatus = Status.NotStarted;
         ProductionLogEventService.MarkClean();
         
-        if (scrollToModule != null)
-        {
-            await scrollToModule.InvokeVoidAsync("ScrollToTop");
-        }
+        await JSRuntime.InvokeVoidAsync("ScrollToTop");
     }
     
     private async Task OnStepCompleted(List<LogStepFormDTO> productionLogSteps, bool? success)
@@ -576,21 +565,14 @@ public partial class Create : ComponentBase, IAsyncDisposable
                 if (success == true)
                 {
                     string elementId = $"step-{nextStep.Position}";
-
-                    if (scrollToModule != null)
-                    {
-                        await scrollToModule.InvokeVoidAsync("scrollTo", elementId);
-                    }
-                } 
+                    await JSRuntime.InvokeVoidAsync("scrollTo", elementId);
+                }
             }
             
             // Scroll to the submit button if it's the last step and it was successful
             if (currentIndex == orderedNodes.Count - 1 && success == true)
             {
-                if (scrollToModule != null)
-                {
-                    await scrollToModule.InvokeVoidAsync("scrollTo", "submit-button");
-                }
+                await JSRuntime.InvokeVoidAsync("scrollTo", "submit-button");
             }
             
             ProductionLogEventService.MarkDirty();
@@ -628,23 +610,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
         ProductionLogEventService.AutoSaveTriggered -= _autoSaveHandler;
         ProductionLogEventService.DbSaveTriggered -= SaveLogsToDatabaseHandler;
         await ProductionLogEventService.StopDbSaveTimerAsync();
-        
-        if (scrollToModule is not null)
-        {
-            try
-            {
-                await scrollToModule.DisposeAsync();
-            }
-            catch (JSDisconnectedException)
-            {
-                // Deliberately not acting on the JSDisconnectedException since it is the preferred
-                // way to handle disposed JS scripts without logging: https://learn.microsoft.com/en-us/aspnet/core/blazor/javascript-interoperability/?view=aspnetcore-9.0
-            }
-            catch (JSException jsException)
-            {
-                Log.Warning("JS Interop Exception thrown, {Message}", jsException.Message);
-            }
-        }
     }
     
     private void AddProductionLogs(int count)

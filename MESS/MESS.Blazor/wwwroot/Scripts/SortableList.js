@@ -1,4 +1,4 @@
-export function init(elOrRef, group, pull, put, sort, handle, filter, component, forceFallback) {
+window.SortableListInit = function init(elOrRef, group, pull, put, sort, handle, filter, component, forceFallback) {
     // Helper to get DOM element (either ElementReference marshalled by Blazor or an id string)
     function getElement(candidate) {
         if (!candidate) return null;
@@ -72,7 +72,7 @@ export function init(elOrRef, group, pull, put, sort, handle, filter, component,
 }
 
 // cleanup function to call from .NET
-export function destroy(elOrRef) {
+window.SortableListDestroy = function destroy(elOrRef) {
     function getElement(candidate) {
         if (!candidate) return null;
         if (candidate instanceof HTMLElement) return candidate;

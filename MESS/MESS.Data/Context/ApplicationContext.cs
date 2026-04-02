@@ -39,6 +39,10 @@ public class ApplicationContext
     /// DbSet for ProductionLogs.
     /// </summary>
     public virtual DbSet<ProductionLog> ProductionLogs { get; set; } = null!;
+    /// <summary>
+    /// DbSet for operator training modules.
+    /// </summary>
+    public virtual DbSet<OperatorTrainingModule> OperatorTrainingModules { get; set; } = null!;
     
     /// <summary>
     /// DbSet for ProductionLogSteps.
@@ -78,6 +82,11 @@ public class ApplicationContext
     /// </summary>
     public virtual DbSet<TagHistory> TagHistories { get; set; } = null!;
     
+    /// <summary>
+    /// DbSet for PrinterSettings.
+    /// </summary>
+    public virtual DbSet<PrinterSettings> PrinterSettings { get; set; } = null!;
+    
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -115,6 +124,10 @@ public class ApplicationContext
         modelBuilder.Entity<PartDefinition>()
             .Property(p => p.IsSerialNumberUnique)
             .HasDefaultValue(true);
+
+        modelBuilder.Entity<OperatorTrainingModule>()
+            .HasIndex(m => m.Title)
+            .IsUnique();
         
         modelBuilder.Entity<Step>()
             .ToTable("Steps");

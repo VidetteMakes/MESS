@@ -108,7 +108,7 @@
     private int? SelectedProductId { get; set; }
     private int? SelectedWorkInstructionId { get; set; }
     
-    private IJSObjectReference? _scrollToModule;
+
     
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
@@ -128,8 +128,7 @@
     {
         if (firstRender)
         {
-            _scrollToModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import",
-                "./Scripts/ScrollTo.js");
+            // ScrollTo is now a window global, no need to load module
         }
     }
 
@@ -460,10 +459,7 @@
     private async Task ScrollToElement(WorkInstructionNodeFormDTO node)
     {
         string elementId = $"node-{node.Position}";
-        if (_scrollToModule != null)
-        {
-            await _scrollToModule.InvokeVoidAsync("scrollTo", elementId);
-        }
+        await JSRuntime.InvokeVoidAsync("scrollTo", elementId);
     }
     
     private async Task OnWorkInstructionSelected(int instructionId)

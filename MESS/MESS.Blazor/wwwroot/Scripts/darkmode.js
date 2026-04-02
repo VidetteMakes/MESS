@@ -151,7 +151,9 @@ function applyTheme(isDark) {
     }
 }
 
-let currentDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+if (typeof currentDark === 'undefined') {
+    var currentDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
 let manualOverride = null;
 
 function detectAndApplyTheme() {

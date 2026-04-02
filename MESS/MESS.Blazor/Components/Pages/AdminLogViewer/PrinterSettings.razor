@@ -1,0 +1,247 @@
+@page "/admin/printer-settings"
+@using MESS.Services.DTOs.PrinterSettings
+@using MESS.Services.CRUD.PrinterSettings
+@using Microsoft.AspNetCore.Authorization
+@inject IPrinterSettingsService PrinterSettingsService
+@inject IToastService ToastService
+
+@attribute [Authorize(Roles = "Administrator")]
+
+<PageTitle>Printer Settings</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">Network Printer Settings</h4>
+                </div>
+                <div class="card-body">
+                    @if (Settings is null)
+                    {
+                        <div class="alert alert-info">
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                            Loading printer settings...
+                        </div>
+                    }
+                    else
+                    {
+                        <EditForm Model="Settings" OnValidSubmit="SaveSettingsAsync" OnInvalidSubmit="HandleInvalidSubmit">
+                            <DataAnnotationsValidator />
+
+                            <div class="alert alert-warning">
+                                <strong>Configure your Brother PT-P700 label printer here.</strong>
+                                <br/>
+                                Once configured, QR code labels and red tag labels will print directly to your network printer.
+                            </div>
+
+                            <!-- Enable/Disable Row -->
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <InputCheckbox class="form-check-input" id="enablePrinter" @bind-Value="Settings.IsEnabled" />
+                                        <label class="form-check-label" for="enablePrinter">
+                                            Enable Network Printer
+                                        </label>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">
+                                        When disabled, printing will fall back to browser print dialog
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Basic Settings -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Printer Type</label>
+                                    <InputSelect class="form-select" @bind-Value="Settings.PrinterType">
+                                        <option value="BrotherPTP700">Brother PT-P700</option>
+                                        <option value="BrotherQL800">Brother QL-800</option>
+                                        <option value="Generic">Generic Network Printer</option>
+                                    </InputSelect>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">IP Address <span class="text-danger">*</span></label>
+                                    <InputText class="form-control" @bind-Value="Settings.IpAddress" placeholder="192.168.1.100" />
+                                    <small class="text-muted">Find this in your printer's network settings</small>
+                                </div>
+                            </div>
+
+                            <!-- Connection Settings -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Port</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.Port" />
+                                    <small class="text-muted">Standard: 9100 (raw printing)</small>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Timeout (ms)</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.TimeoutMilliseconds" />
+                                </div>
+
+                                <div class="col-md-4">
+                                    <div class="form-check mt-4">
+                                        <InputCheckbox class="form-check-input" id="autoFallback" @bind-Value="Settings.AutoFallbackToBrowser" />
+                                        <label class="form-check-label" for="autoFallback">
+                                            Auto-Fallback to Browser
+                                        </label>
+                                        <small class="text-muted d-block">Fall back to browser print if network print fails</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Label Settings -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Label Width (mm)</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.LabelWidthMm" />
+                                    <small class="text-muted">TZe tape: 12, 24, or 36 mm</small>
+                                </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Label Height (mm)</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.LabelHeightMm" />
+                                </div>
+                            </div>
+
+                            <!-- Print Options -->
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" id="printQr" @bind-Value="Settings.PrintQrLabels" />
+                                        <label class="form-check-label" for="printQr">
+                                            Print QR Code Labels
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" id="printRedTags" @bind-Value="Settings.PrintRedTags" />
+                                        <label class="form-check-label" for="printRedTags">
+                                            Print Red Tag Labels
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Notes -->
+                            <div class="mb-3">
+                                <label class="form-label">Notes</label>
+                                <InputTextArea class="form-control" @bind-Value="Settings.Notes" rows="3" placeholder="Add any notes about this printer configuration..." />
+                            </div>
+
+                            <!-- Buttons -->
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success" disabled="@IsSaving">
+                                    @if (IsSaving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                    }
+                                    Save Settings
+                                </button>
+
+                                <button type="button" class="btn btn-outline-secondary" @onclick="TestConnectionAsync" disabled="@(IsSaving || IsTesting)">
+                                    @if (IsTesting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        <text>Testing...</text>
+                                    }
+                                    else
+                                    {
+                                        <span>🔗 Test Connection</span>
+                                    }
+                                </button>
+                            </div>
+
+                            @if (!string.IsNullOrEmpty(ConnectionTestMessage))
+                            {
+                                <div class="alert @ConnectionTestAlertClass mt-3">
+                                    @ConnectionTestMessage
+                                </div>
+                            }
+                        </EditForm>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private PrinterSettingsDTO? Settings;
+    private bool IsSaving;
+    private bool IsTesting;
+    private string? ConnectionTestMessage;
+    private string ConnectionTestAlertClass = "alert-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Settings = await PrinterSettingsService.GetSettingsAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to load printer settings: {ex.Message}");
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        IsSaving = true;
+        ConnectionTestMessage = null;
+
+        try
+        {
+            Settings = await PrinterSettingsService.UpdateSettingsAsync(Settings!);
+            ToastService.ShowSuccess("Printer settings saved successfully");
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save printer settings: {ex.Message}");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private void HandleInvalidSubmit()
+    {
+        ToastService.ShowWarning("Please correct the validation errors before saving");
+    }
+
+    private async Task TestConnectionAsync()
+    {
+        IsTesting = true;
+        ConnectionTestMessage = null;
+
+        try
+        {
+            bool success = await PrinterSettingsService.TestPrinterConnectionAsync();
+            
+            if (success)
+            {
+                ConnectionTestAlertClass = "alert-success";
+                ConnectionTestMessage = "✅ Successfully connected to printer!";
+            }
+            else
+            {
+                ConnectionTestAlertClass = "alert-danger";
+                ConnectionTestMessage = "❌ Failed to connect to printer. Check IP address, port, and network connectivity.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ConnectionTestAlertClass = "alert-danger";
+            ConnectionTestMessage = $"❌ Connection test error: {ex.Message}";
+        }
+        finally
+        {
+            IsTesting = false;
+        }
+    }
+}

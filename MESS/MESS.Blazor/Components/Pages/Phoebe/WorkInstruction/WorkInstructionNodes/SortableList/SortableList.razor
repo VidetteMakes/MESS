@@ -92,7 +92,6 @@
 
     private DotNetObjectReference<SortableList<T>>? selfReference;
     private ElementReference containerRef;
-    private IJSObjectReference? moduleRef;
     private bool initialized = false;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -102,10 +101,9 @@
             try
             {
                 selfReference = DotNetObjectReference.Create(this);
-                moduleRef = await JS.InvokeAsync<IJSObjectReference>("import", "./Scripts/SortableList.js");
 
-                // Pass the ElementReference so JS receives the actual element (preferred).
-                await moduleRef.InvokeVoidAsync("init", containerRef, Group, Pull, Put, Sort, Handle, Filter, selfReference, ForceFallback);
+                // Call the window global functions directly
+                await JS.InvokeVoidAsync("SortableListInit", containerRef, Group, Pull, Put, Sort, Handle, Filter, selfReference, ForceFallback);
                 initialized = true;
             }
             catch (JSException jsEx)
@@ -128,21 +126,17 @@
     public Task OnRemoveJS(int oldIndex, int newIndex)
         => OnRemove.InvokeAsync((oldIndex, newIndex));
 
-    // Implement IAsyncDisposable to clean up the JS module and DotNetObjectReference.
+    // Implement IAsyncDisposable to clean up the DotNetObjectReference.
     public async ValueTask DisposeAsync()
     {
         try
         {
-            if (moduleRef is not null)
-            {
-                // call destroy to remove Sortable instance on JS side
-                try { await moduleRef.InvokeVoidAsync("destroy", containerRef); } catch { /* ignore */ }
-                await moduleRef.DisposeAsync();
-            }
+            // call destroy to remove Sortable instance on JS side
+            try { await JS.InvokeVoidAsync("SortableListDestroy", containerRef); } catch { /* ignore */ }
         }
         catch (Exception e)
         {
-            Console.Error.WriteLine($"Error disposing SortableList module: {e}");
+            Console.Error.WriteLine($"Error disposing SortableList: {e}");
         }
         finally
         {

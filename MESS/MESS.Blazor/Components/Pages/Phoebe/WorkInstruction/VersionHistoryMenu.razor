@@ -1,6 +1,12 @@
 ﻿@using MESS.Services.DTOs.WorkInstructions.Version
 
-<div class="sidebar-panel @(IsOpen ? "open" : "closed")">
+<div class="version-history-container">
+    @if (IsOpen)
+    {
+        <div class="sidebar-backdrop" @onclick="OnToggleClicked"></div>
+    }
+
+    <div class="sidebar-panel @(IsOpen ? "open" : "closed")">
     <!-- Sidebar Header -->
     <div class="sidebar-header d-flex justify-content-between align-items-center mb-3">
         <h5>Version History</h5>
@@ -74,6 +80,7 @@
             }
         </div>
     }
+</div>
 </div>
     
 

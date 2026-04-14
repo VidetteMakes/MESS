@@ -22,6 +22,17 @@
     transform: translateX(-100%); /* slide out */
 }
 
+.sidebar-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1049;
+    background-color: transparent;
+    cursor: default;
+}
+
 /* Dark mode overrides */
 body.dark-mode .sidebar-panel {
     background-color: #1e1e1e;

@@ -4,10 +4,12 @@
 @using System.ComponentModel
 @using MESS.Blazor.Components.Navigator
 @using MESS.Services.UI.DarkMode
+@using MESS.Services.CRUD.ApplicationUser
 @using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthProvider
 @inject DarkModeInstance DarkModeInstance
+@inject IApplicationUserService ApplicationUserService
 
 <HeadContent>
     <script src="./Scripts/darkmode.js"></script>
@@ -77,7 +79,6 @@
     private bool isSidebarOpen = false;
     private bool ShowSidebarToggle = true;
     private bool ShowDarkModeToggle = true;
-    private bool isDarkMode = false;
 
     /// <summary>
     /// Called by the framework when parameters are set.
@@ -101,6 +102,29 @@
     protected override void OnInitialized()
     {
         DarkModeInstance.PropertyChanged += OnDarkModeChanged;
+    }
+
+    /// <summary>
+    /// Called after the component renders. On first render, loads the user's dark mode
+    /// preference from their profile and applies it.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var authState = await AuthProvider.GetAuthenticationStateAsync();
+            var userName = authState.User.Identity?.Name;
+            if (!string.IsNullOrEmpty(userName))
+            {
+                var user = await ApplicationUserService.GetByUserNameAsync(userName);
+                if (user != null)
+                {
+                    DarkModeInstance.Set(user.DarkMode);
+                    await JS.InvokeVoidAsync("setDarkMode", user.DarkMode);
+                    StateHasChanged();
+                }
+            }
+        }
     }
     
     private void OnDarkModeChanged(object? sender, PropertyChangedEventArgs e)
@@ -126,13 +150,23 @@
     }
 
     /// <summary>
-    /// Toggles dark mode by invoking the JS function and updates the icon.
+    /// Toggles dark mode, applies it via JS, and saves the preference to the user's profile.
     /// </summary>
     private async Task ToggleDarkMode()
     {
         DarkModeInstance.Toggle();
-        isDarkMode = !isDarkMode;
-        await JS.InvokeVoidAsync("toggleDarkMode", isDarkMode);
+        await JS.InvokeVoidAsync("toggleDarkMode");
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name;
+        if (!string.IsNullOrEmpty(userName))
+        {
+            var user = await ApplicationUserService.GetByUserNameAsync(userName);
+            if (user != null)
+            {
+                await ApplicationUserService.UpdateDarkModePreferenceAsync(user.Id, DarkModeInstance.IsDarkMode);
+            }
+        }
     }
 
     /// <summary>

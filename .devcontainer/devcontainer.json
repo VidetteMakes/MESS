@@ -5,7 +5,7 @@
   workspaceFolder workspaces${localWorkspaceFolderBasename}MESS,
   shutdownAction stopCompose,
   remoteUser vscode,
-  forwardPorts [5000, 5001, 1433],
+  forwardPorts [5000, 5001, 5432],
   portsAttributes {
     5000 {
       label Blazor HTTP,
@@ -15,8 +15,8 @@
       label Blazor HTTPS,
       onAutoForward notify
     },
-    1433 {
-      label SQL Server
+    5432 {
+      label PostgreSQL
     }
   },
   customizations {
@@ -38,6 +38,6 @@
   postCreateCommand bash workspaces${localWorkspaceFolderBasename}.devcontainerinit-db.sh,
   containerEnv {
     ASPNETCORE_ENVIRONMENT Development,
-    ConnectionStrings__MESSConnection Server=db,1433;Database=MESS_Data;User Id=sa;Password=MessDevPassword_123!;TrustServerCertificate=True;
+    ConnectionStrings__MESSConnection Host=db;Port=5432;Database=mess;Username=mess;Password=MessDevPassword_123!
   }
 }

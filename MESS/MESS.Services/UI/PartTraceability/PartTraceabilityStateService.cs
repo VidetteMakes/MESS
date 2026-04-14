@@ -290,8 +290,7 @@ public class PartTraceabilityStateService : IPartTraceabilityStateService
     /// <inheritdoc/>
     public PartTraceabilitySnapshot CreateSnapshot(int logIndex)
     {
-        if (!_logs.TryGetValue(logIndex, out var log))
-            throw new InvalidOperationException($"No entries found for logIndex {logIndex}");
+        var log = EnsureLogExists(logIndex);
 
         var snapshotEntries = log.Entries.Values
             .Select(e => new PartTraceabilitySnapshot.PartEntrySnapshot

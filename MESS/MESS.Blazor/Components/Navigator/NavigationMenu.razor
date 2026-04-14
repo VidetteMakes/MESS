@@ -9,6 +9,11 @@
         ☰
     </button> *@
 
+    @if (IsOpen)
+    {
+        <div class="sidebar-backdrop" @onclick="OnToggleClicked"></div>
+    }
+
     <!-- Sidebar Panel -->
     <div class="sidebar-panel @(IsOpen ? "open" : "closed")" style="padding: 1rem;">
         <div class="d-flex justify-content-between align-items-center mb-3">

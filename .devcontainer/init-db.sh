@@ -4,16 +4,16 @@ set -euo pipefail
 WORKSPACE_DIR="$(pwd)"
 
 echo "Workspace: ${WORKSPACE_DIR}"
-echo "Waiting for SQL Server on db:1433..."
+echo "Waiting for PostgreSQL on db:5432..."
 
 for i in {1..60}; do
-  if (echo > /dev/tcp/db/1433) >/dev/null 2>&1; then
-    echo "SQL Server port is reachable."
+  if (echo > /dev/tcp/db/5432) >/dev/null 2>&1; then
+    echo "PostgreSQL port is reachable."
     break
   fi
 
   if [ "$i" -eq 60 ]; then
-    echo "SQL Server did not become reachable in time."
+    echo "PostgreSQL did not become reachable in time."
     exit 1
   fi
 

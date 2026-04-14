@@ -31,6 +31,11 @@ public class ApplicationUser : IdentityUser
     public List<int>? ProductionLogIds { get; set; }
     
     /// <summary>
+    /// Gets or sets a value indicating whether the user prefers dark mode.
+    /// </summary>
+    public bool DarkMode { get; set; }
+
+    /// <summary>
     /// Gets the full name of the user by combining the first and last names.
     /// </summary>
     public string FullName => $"{FirstName} {LastName}";

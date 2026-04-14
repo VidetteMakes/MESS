@@ -95,4 +95,12 @@ public interface IApplicationUserService
     /// </summary>
     /// <returns>A CSV string representing all users and their roles.</returns>
     Task<string> ExportUsersToCsvAsync();
+
+    /// <summary>
+    /// Updates the dark mode preference for a user.
+    /// </summary>
+    /// <param name="userId">The user's ID.</param>
+    /// <param name="isDarkMode">True to enable dark mode; false to disable it.</param>
+    /// <returns>True if successful; otherwise false.</returns>
+    Task<bool> UpdateDarkModePreferenceAsync(string userId, bool isDarkMode);
 }

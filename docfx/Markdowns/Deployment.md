@@ -4,7 +4,8 @@
 Note: There are several seeders that will input required entries into the database if the database does **not** contain any entries
 This includes a default **Technician** account that is required to log in to MESS and to start creating WorkInstructions, Users, etc.
 
-#### Ensure that once the application has a database connection that you **Change Default Technician Password.**
+#### Ensure that once the application has a database connection that you **Change Default Technician Password.** 
+**This feature does not yet exist (as of 3/31/2026). However, once password support is added this step will be  very important.**
 
 ### (Linux/Ubuntu) Initial Project Setup
 For more information on installation we followed this tutorial from [Microsoft](https://learn.microsoft.com/en-us/dotnet/core/install/linux-ubuntu-install?tabs=dotnet9&pivots=os-linux-ubuntu-2404)
@@ -110,6 +111,8 @@ sudo chmod 600 /etc/mess/env
 
 ### Publish
 There are several ways to publish the application for deployment. Some of these options include building the source on a separate machine and then copying the files over. Another option is to clone the repo onto the hosting server and to build directly on the hosting server (not recommended for production environment). This guide will be compatible with either option.
+Visit ``README.md`` located in ``MESS/deployment-resources`` for further information on publishing. This includes a shell script for
+automating the publishing of MESS code (``publish.sh``).
 
 ### Install Nginx
 For this guide we will be using Nginx, but the same outcome can be reached with Apache or any other web server.
@@ -134,7 +137,7 @@ sudo chown -R USERNAME:GROUPNAME /var/www/mess
 Within a directory on the newly created users account, run the following command to clone the MESS repository.
 
 ```bash
-git clone https://github.com/SensitTechnologies/MESS.git
+git clone https://github.com/VidetteMakes/MESS.git
 ```
 
 ### 1. Navigate to the solution directory
@@ -251,7 +254,7 @@ sudo systemctl restart nginx.service
 
 
 #### Database
-For database setup MESS uses SQL Server as its SQL provider. In terms of setting up the database itself, we leave up to the user since there are a variety of different methods on how to setup a SQL Server database. However, if you are simply wanting to test MESS in a production environment please refer to the database setup within the **Local Development** section of this WiKi as it will guide you on how to setup a Dockerized SQL Server instance.
+For database setup MESS uses PostgreSQL as its SQL provider. In terms of setting up the database itself, we leave up to the user since there are a variety of different methods on how to setup a Postgres database. However, if you are simply wanting to test MESS in a production environment please refer to the database setup within the **Local Development** section of this Wiki as it will guide you on how to setup a Dockerized Postgres instance.
 
 ### (Windows) Initial Project Setup To Be Implemented
 ...
@@ -260,12 +263,12 @@ For database setup MESS uses SQL Server as its SQL provider. In terms of setting
 **NOTE:** *For both of these commands you must be in the MESS.Data directory, otherwise you must specify the base project as well.*
 #### Migrations
 ```shell
-dotnet ef migrations add "MIGRATION_NAME" --context ApplicationContext --startup-project ..\MESS.Blazor\MESS.Blazor.csproj
+dotnet ef migrations add "MIGRATION_NAME"
 ```
 
 #### Updates
 ```shell
-dotnet ef database update --context ApplicationContext --startup-project ..\MESS.Blazor\MESS.Blazor.csproj
+dotnet ef database update
 ```
 
 
@@ -276,7 +279,7 @@ Instead of using "appsettings.*.json" for managing environment variables or user
 we have opted to utilize the .NET *Secret Manager* for development purposes.
 For more information see [.NET Secret Manager](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets?view=aspnetcore-9.0&tabs=linux)
 
-### Quick Start
+#### Quick Start
 NOTE: If you are deploying to production you should **not** use the Secret Manager.
 In terms of the MESS project you should not have to initial the Secret Manager since it will
 already be in each appropriate project. However, in the case that the Secret Manager is being
@@ -299,6 +302,7 @@ dotnet user-secrets set "DatabaseConnection" "Data Source = 123456.db"
 ```
 
 #### Setup Development Database connection
+Below is an example of how to set the connection string for the development database using the Secret Manager.
 ```shell
-dotnet user-secrets set "ConnectionStrings:MESSConnection" "Data Source=developmentMESSDb.db"
+dotnet user-secrets set "ConnectionStrings:MESSConnection" "Server=myhost;Database=mess;Port=5432;User Id=myuser;Password=MySuperSecurePassword;"
 ```

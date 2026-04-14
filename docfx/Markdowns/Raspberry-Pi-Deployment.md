@@ -1,5 +1,5 @@
 # Deploying MESS on a Raspberry Pi
-This setup assumes that you already have a Microsoft SQL Server database for MESS up and running. For information on how to setup Microsoft SQL Server for production, visit [here](https://learn.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server?view=sql-server-ver17).
+This setup assumes that you already have a PostgreSQL database for MESS up and running. For information on how to setup Microsoft SQL Server for production, visit [here](https://learn.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server?view=sql-server-ver17).
 
 If you are looking to deploy MESS without a docker container for the web server and with **Nginx**, visit the [deployment](https://github.com/SensitTechnologies/MESS/wiki/Deployment) wiki page.
 
@@ -66,7 +66,7 @@ source ~/.bashrc
 To ensure compatibility with the auto-update script, run this command to the latest version of MESS into your home directory.
 
 ```bash
-git clone https://github.com/SensitTechnologies/MESS.git
+git clone https://github.com/VidetteMakes/MESS.git
 ```
 
 ### 7. Set the Repository Directory as Safe for Git

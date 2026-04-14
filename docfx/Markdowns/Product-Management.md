@@ -1,11 +1,14 @@
 ## Overview
 
-The **Products** page is where all product records within MESS are created, versioned, and managed.
+The **Products** page is where all product records within MESS are created and managed. As of 3/31/2026, all products reference part definitions within the database schema. 
+A part definition can be thought of as an SKU. Each product in MESS must reference a part definition under the hood. Products
+are primarily used for grouping work instructions together. Products and work instructions have a many-to-many relationship.
+
 From here, authorized users can:
 
 * Create brand new products from scratch.
-* Generate new versions of existing products.
 * Activate or deactivate products for production visibility.
+* Manage product relationships with work instructions.
 * Review all stored product information at a glance.
 
 Below is a screenshot of the **Products** page.
@@ -17,13 +20,6 @@ Below is a screenshot of the **Products** page.
 ## Editing Products
 
 The product table supports **inline editing** for all product fields.
-However, edits to existing products cannot be saved in place — they must be committed by creating a **new product record** based on the changes.
-
-**Key points:**
-
-* This approach prevents altering or deleting products that may be referenced in production logs.
-* Product visibility to operators is controlled by the **Active** checkbox.
-* Saving changes to an existing product always produces a separate version, preserving the original.
 
 ---
 

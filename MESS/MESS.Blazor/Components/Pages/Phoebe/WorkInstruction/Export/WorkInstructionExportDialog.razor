@@ -32,13 +32,16 @@
         </FluentDialogBody>
 
         <FluentDialogFooter>
-            <WorkInstructionExportButton 
-                @ref="_exportButton"
-                WorkInstruction="WorkInstruction"
-                OnDownloadComplete="Close"
-                OnDownloadStateChanged="HandleDownloadStateChanged"
-                OnProgressChanged="HandleProgressChanged"/>
-            
+            @if (WorkInstruction is not null)
+            {
+                <WorkInstructionExportButton 
+                    @ref="_exportButton"
+                    WorkInstruction="WorkInstruction"
+                    OnDownloadComplete="Close"
+                    OnDownloadStateChanged="HandleDownloadStateChanged"
+                    OnProgressChanged="HandleProgressChanged"/>
+            }
+
             <button type="button"
                     class="btn btn-sm btn-outline-secondary"
                     @onclick="CancelExport">

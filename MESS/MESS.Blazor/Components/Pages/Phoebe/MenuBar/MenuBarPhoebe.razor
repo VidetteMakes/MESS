@@ -4,6 +4,7 @@
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction.Import
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction.Export
+@using MESS.Services.CRUD.ApplicationUser
 @using MESS.Services.CRUD.PartDefinitions
 @using MESS.Services.CRUD.WorkInstructions
 @using MESS.Services.DTOs.Products.Detail
@@ -15,6 +16,7 @@
 @using MESS.Services.UI.WorkInstructionEditor
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
+@inject IApplicationUserService ApplicationUserService
 @inject IWorkInstructionEditorService EditorService
 @inject IWorkInstructionService WorkInstructionService
 @inject IPartDefinitionService PartDefinitionService
@@ -162,16 +164,19 @@
     Visible="@_showExportDialog"
     VisibleChanged="@(val => _showExportDialog = val)" />
 
-<ProductAssociationDialog
-    AllProducts="@Products"
-    SelectedProducts="@(ActiveDialog.SelectedProductNames)"
-    SelectedProductsChanged="OnDialogProductsChanged"
-    IsVisible="@ActiveDialog.IsVisible"
-    IsVisibleChanged="@(val => ActiveDialog.IsVisible = val)"
-    HeaderText="@ActiveDialog.HeaderText"
-    ConfirmButtonText="@ActiveDialog.ConfirmButtonText"
-    AllowsRenaming="@(ActiveDialog.Type == DialogType.SaveAs)"
-    OnConfirmed="HandleDialogConfirmed" />
+@if (Products is not null)
+{
+    <ProductAssociationDialog
+        AllProducts="@Products"
+        SelectedProducts="@(ActiveDialog.SelectedProductNames)"
+        SelectedProductsChanged="OnDialogProductsChanged"
+        IsVisible="@ActiveDialog.IsVisible"
+        IsVisibleChanged="@(val => ActiveDialog.IsVisible = val)"
+        HeaderText="@ActiveDialog.HeaderText"
+        ConfirmButtonText="@ActiveDialog.ConfirmButtonText"
+        AllowsRenaming="@(ActiveDialog.Type == DialogType.SaveAs)"
+        OnConfirmed="HandleDialogConfirmed" />
+}
 
 @code {
     private string? ActiveLineOperator { get; set; }
@@ -399,10 +404,20 @@
 
     private async Task ToggleDarkMode()
     {
-        await JS.InvokeVoidAsync("document.body.classList.toggle", "dark-mode");
-        var isDark = await JS.InvokeAsync<bool>("document.body.classList.contains", "dark-mode");
-        _darkModeIcon = isDark ? "bi bi-sun" : "bi bi-moon-stars";
         DarkModeInstance.Toggle();
+        _darkModeIcon = DarkModeInstance.IsDarkMode ? "bi bi-sun" : "bi bi-moon-stars";
+        await JS.InvokeVoidAsync("toggleDarkMode");
+
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name;
+        if (!string.IsNullOrEmpty(userName))
+        {
+            var user = await ApplicationUserService.GetByUserNameAsync(userName);
+            if (user != null)
+            {
+                await ApplicationUserService.UpdateDarkModePreferenceAsync(user.Id, DarkModeInstance.IsDarkMode);
+            }
+        }
     }
 
     private async Task ToggleSidebar()

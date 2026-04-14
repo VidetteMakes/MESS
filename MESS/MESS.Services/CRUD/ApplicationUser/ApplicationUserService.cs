@@ -318,4 +318,21 @@ public class ApplicationUserService : IApplicationUserService
 
         return csv;
     }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateDarkModePreferenceAsync(string userId, bool isDarkMode)
+    {
+        try
+        {
+            var updated = await _context.Users
+                .Where(u => u.Id == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DarkMode, isDarkMode));
+            return updated > 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error updating dark mode preference for user {UserId}", userId);
+            return false;
+        }
+    }
 }

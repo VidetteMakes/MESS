@@ -172,6 +172,12 @@ window.toggleDarkMode = function () {
     applyTheme(manualOverride);
 };
 
+window.setDarkMode = function (isDark) {
+    manualOverride = isDark;
+    localStorage.setItem("manualDarkMode", isDark ? "dark" : "light");
+    applyTheme(isDark);
+};
+
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e => {
     currentDark = e.matches;
     if (manualOverride === null) {

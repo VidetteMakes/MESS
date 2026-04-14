@@ -5,6 +5,7 @@
 
     @if (IsMenuOpen)
     {
+        <div class="dropdown-backdrop" @onclick="CloseDropdown"></div>
         <div class="dropdown-menu-custom">
             <button class="dropdown-item" @onclick="() => InvokeAction(Up)">Move Up</button>
             <button class="dropdown-item" @onclick="() => InvokeAction(Down)">Move Down</button>
@@ -40,6 +41,11 @@
     private void ToggleDropdown()
     {
         IsMenuOpen = !IsMenuOpen;
+    }
+
+    private void CloseDropdown()
+    {
+        IsMenuOpen = false;
     }
 
     private async Task InvokeAction(string action)

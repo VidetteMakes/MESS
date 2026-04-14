@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   app:
-    image: mcr.microsoft.com/devcontainers/dotnet:1-8.0-bookworm
+    image: mcr.microsoft.com/devcontainers/dotnet:1-10.0-bookworm
     volumes:
       - ..:/workspaces:cached
     command: sleep infinity
@@ -10,19 +10,19 @@ services:
       - db
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__MESSConnection: "Server=db,1433;Database=MESS_Data;User Id=sa;Password=MessDevPassword_123!;TrustServerCertificate=True;"
+      ConnectionStrings__MESSConnection: "Host=db;Port=5432;Database=mess;Username=mess;Password=MessDevPassword_123!"
 
   db:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: postgres:latest
     restart: unless-stopped
     environment:
-      ACCEPT_EULA: "Y"
-      MSSQL_SA_PASSWORD: "MessDevPassword_123!"
-      MSSQL_PID: "Developer"
+      POSTGRES_USER: "mess"
+      POSTGRES_PASSWORD: "MessDevPassword_123!"
+      POSTGRES_DB: "mess"
     ports:
-      - "1433:1433"
+      - "5432:5432"
     volumes:
-      - mssql-data:/var/opt/mssql
+      - postgres-data:/var/lib/postgresql/data
 
 volumes:
-  mssql-data:
+  postgres-data:

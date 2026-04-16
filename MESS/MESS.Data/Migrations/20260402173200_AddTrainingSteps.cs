@@ -1,5 +1,7 @@
 using System;
+using MESS.Data.Context;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
@@ -7,6 +9,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace MESS.Data.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ApplicationContext))]
+    [Migration("20260402173200_AddTrainingSteps")]
     public partial class AddTrainingSteps : Migration
     {
         /// <inheritdoc />

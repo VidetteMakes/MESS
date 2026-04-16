@@ -1,14 +1,13 @@
-@page "/admin/printer-settings"
-@page "/admin/settings/printer-network"
-@using MESS.Services.DTOs.PrinterSettings
-@using MESS.Services.CRUD.PrinterSettings
+@page "/admin/settings/esp32-s3-devkitc-1"
+@using MESS.Services.CRUD.DevelopmentBoardSettings
+@using MESS.Services.DTOs.DevelopmentBoardSettings
 @using Microsoft.AspNetCore.Authorization
-@inject IPrinterSettingsService PrinterSettingsService
+@inject IDevelopmentBoardSettingsService DevelopmentBoardSettingsService
 @inject IToastService ToastService
 
 @attribute [Authorize(Roles = "Administrator")]
 
-<PageTitle>Printer Settings</PageTitle>
+<PageTitle>ESPRESSIF ESP32-S3 DevKitC-1 Settings</PageTitle>
 
 <div class="container-fluid mt-4">
     <div class="row">
@@ -16,16 +15,17 @@
             <div class="d-flex justify-content-end mb-3">
                 <a class="btn btn-outline-secondary" href="/admin/settings">Back to Settings</a>
             </div>
+
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0">Network Printer Settings</h4>
+                    <h4 class="mb-0">ESPRESSIF ESP32-S3 DevKitC-1 Network Settings</h4>
                 </div>
                 <div class="card-body">
                     @if (Settings is null)
                     {
                         <div class="alert alert-info">
                             <span class="spinner-border spinner-border-sm me-2"></span>
-                            Loading printer settings...
+                            Loading development board settings...
                         </div>
                     }
                     else
@@ -34,110 +34,98 @@
                             <DataAnnotationsValidator />
 
                             <div class="alert alert-warning">
-                                <strong>Configure your Brother PT-P700 label printer here.</strong>
-                                <br/>
-                                Once configured, QR code labels and red tag labels will print directly to your network printer.
+                                <strong>Enter the network details the ESP32 board uses to talk to MESS.</strong>
+                                <br />
+                                Save the board host information, Wi-Fi credentials, and the software endpoint the board should use.
                             </div>
 
-                            <!-- Enable/Disable Row -->
                             <div class="row mb-3">
                                 <div class="col-md-6">
                                     <div class="form-check form-switch">
-                                        <InputCheckbox class="form-check-input" id="enablePrinter" @bind-Value="Settings.IsEnabled" />
-                                        <label class="form-check-label" for="enablePrinter">
-                                            Enable Network Printer
+                                        <InputCheckbox class="form-check-input" id="enableBoard" @bind-Value="Settings.IsEnabled" />
+                                        <label class="form-check-label" for="enableBoard">
+                                            Enable Development Board Integration
                                         </label>
                                     </div>
                                     <small class="text-muted d-block mt-1">
-                                        When disabled, printing will fall back to browser print dialog
+                                        Disable this if the board should not connect to the software yet
                                     </small>
                                 </div>
                             </div>
 
-                            <!-- Basic Settings -->
                             <div class="row g-3 mb-3">
                                 <div class="col-md-6">
-                                    <label class="form-label">Printer Type</label>
-                                    <InputSelect class="form-select" @bind-Value="Settings.PrinterType">
-                                        <option value="BrotherPTP700">Brother PT-P700</option>
-                                        <option value="BrotherQL800">Brother QL-800</option>
-                                        <option value="Generic">Generic Network Printer</option>
-                                    </InputSelect>
+                                    <label class="form-label">Device Name <span class="text-danger">*</span></label>
+                                    <InputText class="form-control" @bind-Value="Settings.DeviceName" placeholder="ESPRESSIF ESP32-S3 DevKitC-1" />
                                 </div>
 
                                 <div class="col-md-6">
-                                    <label class="form-label">IP Address <span class="text-danger">*</span></label>
-                                    <InputText class="form-control" @bind-Value="Settings.IpAddress" placeholder="192.168.1.100" />
-                                    <small class="text-muted">Find this in your printer's network settings</small>
+                                    <label class="form-label">Connection Mode</label>
+                                    <InputSelect class="form-select" @bind-Value="Settings.ConnectionMode">
+                                        <option value="WiFi">Wi-Fi</option>
+                                        <option value="Ethernet">Ethernet</option>
+                                        <option value="USB">USB</option>
+                                    </InputSelect>
                                 </div>
                             </div>
 
-                            <!-- Connection Settings -->
                             <div class="row g-3 mb-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Port</label>
-                                    <InputNumber class="form-control" @bind-Value="Settings.Port" />
-                                    <small class="text-muted">Standard: 9100 (raw printing)</small>
+                                <div class="col-md-6">
+                                    <label class="form-label">Board IP Address / Hostname</label>
+                                    <InputText class="form-control" @bind-Value="Settings.HostAddress" placeholder="192.168.1.50 or esp32-board.local" />
+                                    <small class="text-muted">This is the network address MESS will use to reach the board</small>
                                 </div>
 
-                                <div class="col-md-4">
+                                <div class="col-md-3">
+                                    <label class="form-label">Port</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.Port" />
+                                </div>
+
+                                <div class="col-md-3">
                                     <label class="form-label">Timeout (ms)</label>
                                     <InputNumber class="form-control" @bind-Value="Settings.TimeoutMilliseconds" />
                                 </div>
-
-                                <div class="col-md-4">
-                                    <div class="form-check mt-4">
-                                        <InputCheckbox class="form-check-input" id="autoFallback" @bind-Value="Settings.AutoFallbackToBrowser" />
-                                        <label class="form-check-label" for="autoFallback">
-                                            Auto-Fallback to Browser
-                                        </label>
-                                        <small class="text-muted d-block">Fall back to browser print if network print fails</small>
-                                    </div>
-                                </div>
                             </div>
 
-                            <!-- Label Settings -->
                             <div class="row g-3 mb-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Label Width (mm)</label>
-                                    <InputNumber class="form-control" @bind-Value="Settings.LabelWidthMm" />
-                                    <small class="text-muted">TZe tape: 12, 24, or 36 mm</small>
-                                </div>
-
-                                <div class="col-md-4">
-                                    <label class="form-label">Label Height (mm)</label>
-                                    <InputNumber class="form-control" @bind-Value="Settings.LabelHeightMm" />
-                                </div>
-                            </div>
-
-                            <!-- Print Options -->
-                            <div class="row mb-3">
                                 <div class="col-md-6">
-                                    <div class="form-check">
-                                        <InputCheckbox class="form-check-input" id="printQr" @bind-Value="Settings.PrintQrLabels" />
-                                        <label class="form-check-label" for="printQr">
-                                            Print QR Code Labels
-                                        </label>
-                                    </div>
+                                    <label class="form-label">Board API Path</label>
+                                    <InputText class="form-control" @bind-Value="Settings.ApiPath" placeholder="/api/device" />
+                                    <small class="text-muted">Example: <code>/api/device</code> or <code>/status</code></small>
                                 </div>
 
                                 <div class="col-md-6">
-                                    <div class="form-check">
-                                        <InputCheckbox class="form-check-input" id="printRedTags" @bind-Value="Settings.PrintRedTags" />
-                                        <label class="form-check-label" for="printRedTags">
-                                            Print Red Tag Labels
-                                        </label>
-                                    </div>
+                                    <label class="form-label">Software Endpoint</label>
+                                    <InputText class="form-control" @bind-Value="Settings.SoftwareEndpoint" placeholder="https://your-mess-server/api/board-events" />
+                                    <small class="text-muted">Use the MESS endpoint the board should post data to</small>
                                 </div>
                             </div>
 
-                            <!-- Notes -->
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Wi-Fi SSID</label>
+                                    <InputText class="form-control" @bind-Value="Settings.WifiSsid" placeholder="PlantFloorWiFi" />
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Wi-Fi Password</label>
+                                    <InputText class="form-control" type="password" @bind-Value="Settings.WifiPassword" placeholder="Enter Wi-Fi password" />
+                                </div>
+                            </div>
+
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Access Token</label>
+                                    <InputText class="form-control" @bind-Value="Settings.AccessToken" placeholder="Shared token or API key" />
+                                    <small class="text-muted">Use this if the board and software authenticate requests with a shared key</small>
+                                </div>
+                            </div>
+
                             <div class="mb-3">
                                 <label class="form-label">Notes</label>
-                                <InputTextArea class="form-control" @bind-Value="Settings.Notes" rows="3" placeholder="Add any notes about this printer configuration..." />
+                                <InputTextArea class="form-control" @bind-Value="Settings.Notes" rows="3" placeholder="Add any setup details for this board..." />
                             </div>
 
-                            <!-- Buttons -->
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-success" disabled="@IsSaving">
                                     @if (IsSaving)
@@ -155,7 +143,7 @@
                                     }
                                     else
                                     {
-                                        <span>🔗 Test Connection</span>
+                                        <span>Test Connection</span>
                                     }
                                 </button>
                             </div>
@@ -175,7 +163,7 @@
 </div>
 
 @code {
-    private PrinterSettingsDTO? Settings;
+    private DevelopmentBoardSettingsDTO? Settings;
     private bool IsSaving;
     private bool IsTesting;
     private string? ConnectionTestMessage;
@@ -185,11 +173,11 @@
     {
         try
         {
-            Settings = await PrinterSettingsService.GetSettingsAsync();
+            Settings = await DevelopmentBoardSettingsService.GetSettingsAsync();
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to load printer settings: {ex.Message}");
+            ToastService.ShowError($"Failed to load development board settings. If this is a new update, restart the app so the database migration can create the table. Details: {ex.Message}");
         }
     }
 
@@ -200,12 +188,12 @@
 
         try
         {
-            Settings = await PrinterSettingsService.UpdateSettingsAsync(Settings!);
-            ToastService.ShowSuccess("Printer settings saved successfully");
+            Settings = await DevelopmentBoardSettingsService.UpdateSettingsAsync(Settings!);
+            ToastService.ShowSuccess("Development board settings saved successfully");
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to save printer settings: {ex.Message}");
+            ToastService.ShowError($"Failed to save development board settings: {ex.Message}");
         }
         finally
         {
@@ -225,23 +213,23 @@
 
         try
         {
-            bool success = await PrinterSettingsService.TestPrinterConnectionAsync();
-            
+            bool success = await DevelopmentBoardSettingsService.TestConnectionAsync();
+
             if (success)
             {
                 ConnectionTestAlertClass = "alert-success";
-                ConnectionTestMessage = "✅ Successfully connected to printer!";
+                ConnectionTestMessage = "Successfully connected to the development board.";
             }
             else
             {
                 ConnectionTestAlertClass = "alert-danger";
-                ConnectionTestMessage = "❌ Failed to connect to printer. Check IP address, port, and network connectivity.";
+                ConnectionTestMessage = "Failed to connect to the development board. Check the host address, port, and board network access.";
             }
         }
         catch (Exception ex)
         {
             ConnectionTestAlertClass = "alert-danger";
-            ConnectionTestMessage = $"❌ Connection test error: {ex.Message}";
+            ConnectionTestMessage = $"Connection test error: {ex.Message}";
         }
         finally
         {

@@ -43,6 +43,11 @@ public class ApplicationContext
     /// DbSet for operator training modules.
     /// </summary>
     public virtual DbSet<OperatorTrainingModule> OperatorTrainingModules { get; set; } = null!;
+
+    /// <summary>
+    /// DbSet for training steps.
+    /// </summary>
+    public virtual DbSet<TrainingStep> TrainingSteps { get; set; } = null!;
     
     /// <summary>
     /// DbSet for ProductionLogSteps.
@@ -86,6 +91,11 @@ public class ApplicationContext
     /// DbSet for PrinterSettings.
     /// </summary>
     public virtual DbSet<PrinterSettings> PrinterSettings { get; set; } = null!;
+
+    /// <summary>
+    /// DbSet for DevelopmentBoardSettings.
+    /// </summary>
+    public virtual DbSet<DevelopmentBoardSettings> DevelopmentBoardSettings { get; set; } = null!;
     
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -128,6 +138,15 @@ public class ApplicationContext
         modelBuilder.Entity<OperatorTrainingModule>()
             .HasIndex(m => m.Title)
             .IsUnique();
+
+        modelBuilder.Entity<TrainingStep>()
+            .HasOne(step => step.OperatorTrainingModule)
+            .WithMany()
+            .HasForeignKey(step => step.OperatorTrainingModuleId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<TrainingStep>()
+            .ToTable("TrainingSteps");
         
         modelBuilder.Entity<Step>()
             .ToTable("Steps");

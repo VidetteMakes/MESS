@@ -1,0 +1,261 @@
+@using MESS.Data.Models
+@using System.ComponentModel.DataAnnotations
+@using MESS.Services.CRUD.OperatorTraining
+
+@if (IsEditing)
+{
+    <div class="card mb-3 border-primary">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <strong>@(Step.Id == 0 ? "Add Step" : $"Edit Step {Step.StepOrder}")</strong>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="Cancel">Cancel</button>
+        </div>
+        <div class="card-body">
+            <EditForm Model="Step" OnValidSubmit="Save" OnInvalidSubmit="HandleInvalidSubmit">
+                <DataAnnotationsValidator />
+                <ValidationSummary />
+
+                <div class="row g-3 mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label">Step Title</label>
+                        <InputText class="form-control" @bind-Value="Step.Title" placeholder="e.g., Prepare Materials" />
+                        <ValidationMessage For="@(() => Step.Title)" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Step Order</label>
+                        <InputNumber class="form-control" @bind-Value="Step.StepOrder" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Step Description</label>
+                    <InputTextArea class="form-control step-description" @bind-Value="Step.Description" placeholder="Describe the step in detail..." />
+                    <ValidationMessage For="@(() => Step.Description)" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Step Image (Optional)</label>
+                    <div class="input-group">
+                        @if (!string.IsNullOrWhiteSpace(Step.ImagePath))
+                        {
+                            <span class="input-group-text">
+                                <i class="bi bi-image"></i>
+                            </span>
+                            <span class="form-control">@Path.GetFileName(Step.ImagePath)</span>
+                            <button type="button" class="btn btn-outline-danger" @onclick="RemoveImage">Remove</button>
+                        }
+                        else
+                        {
+                            <InputFile class="form-control" OnChange="HandleImageUpload" accept="image/*" />
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Step.ImagePath))
+                    {
+                        <div class="mt-2">
+                            <img src="@Step.ImagePath" alt="Step image" class="img-thumbnail" style="max-width: 200px; max-height: 200px;" />
+                        </div>
+                    }
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button class="btn btn-success" type="submit" disabled="@(!IsFormValid() || IsSaving)">
+                        @if (IsSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Save Step
+                    </button>
+                    <button class="btn btn-outline-secondary" type="button" @onclick="Cancel">Cancel</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+}
+else if (Steps.Count == 0)
+{
+    <div class="alert alert-info" role="alert">
+        <i class="bi bi-info-circle me-2"></i>
+        No steps added yet. Click "Add Step" to get started.
+    </div>
+}
+else
+{
+    <div class="steps-container">
+        @foreach (var step in Steps.OrderBy(s => s.StepOrder))
+        {
+            <div class="card mb-3 step-card">
+                <div class="card-header d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                    <div>
+                        <strong class="step-number">Step @step.StepOrder:</strong>
+                        <span class="step-title">@step.Title</span>
+                    </div>
+                    @if (AllowEdit)
+                    {
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(step)">
+                                <i class="bi bi-pencil"></i> Edit
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => Delete(step)">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </div>
+                    }
+                </div>
+                <div class="card-body">
+                    <div class="step-description mb-3">
+                        @step.Description
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(step.ImagePath))
+                    {
+                        <div class="step-image-container">
+                            <img src="@step.ImagePath" alt="@step.Title" class="img-fluid rounded" style="max-width: 100%; max-height: 400px;" />
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .step-description {
+        min-height: 8rem;
+        white-space: pre-wrap;
+        line-height: 1.6;
+    }
+
+    .step-number {
+        color: #0d6efd;
+        font-weight: 600;
+    }
+
+    .step-title {
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+
+    .step-card {
+        border-left: 4px solid #0d6efd;
+    }
+
+    .step-card:hover {
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: box-shadow 0.2s;
+    }
+
+    .step-image-container {
+        text-align: center;
+        margin-top: 1rem;
+    }
+
+    .steps-container {
+        animation: fadeIn 0.3s ease-in;
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+</style>
+
+@code {
+    [Parameter]
+    public List<TrainingStep> Steps { get; set; } = [];
+
+    [Parameter]
+    public EventCallback<TrainingStep> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback<TrainingStep> OnDelete { get; set; }
+
+    [Parameter]
+    public bool AllowEdit { get; set; }
+
+    private TrainingStep Step { get; set; } = new();
+    private bool IsEditing { get; set; }
+    private bool IsSaving { get; set; }
+
+    private void BeginAdd()
+    {
+        Step = new TrainingStep 
+        { 
+            StepOrder = Steps.Count > 0 ? Steps.Max(s => s.StepOrder) + 1 : 1 
+        };
+        IsEditing = true;
+    }
+
+    private void Edit(TrainingStep step)
+    {
+        Step = new TrainingStep
+        {
+            Id = step.Id,
+            Title = step.Title,
+            Description = step.Description,
+            StepOrder = step.StepOrder,
+            ImagePath = step.ImagePath,
+            OperatorTrainingModuleId = step.OperatorTrainingModuleId
+        };
+        IsEditing = true;
+    }
+
+    private void Cancel()
+    {
+        IsEditing = false;
+        Step = new();
+    }
+
+    private async Task Save()
+    {
+        IsSaving = true;
+        try
+        {
+            await OnSave.InvokeAsync(Step);
+            Cancel();
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task Delete(TrainingStep step)
+    {
+        await OnDelete.InvokeAsync(step);
+    }
+
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null && file.Size > 0)
+        {
+            // For now, just store the file name
+            // In a real implementation, you'd upload to server and get a path
+            Step.ImagePath = $"/TrainingImages/{Guid.NewGuid()}{Path.GetExtension(file.Name)}";
+        }
+    }
+
+    private void RemoveImage()
+    {
+        Step.ImagePath = null;
+    }
+
+    private bool IsFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(Step.Title) && 
+               !string.IsNullOrWhiteSpace(Step.Description) &&
+               Step.StepOrder > 0;
+    }
+
+    private void HandleInvalidSubmit()
+    {
+        // Validation errors will be shown by ValidationSummary
+    }
+
+    public void BeginAddStep()
+    {
+        BeginAdd();
+    }
+}

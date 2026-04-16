@@ -27,4 +27,24 @@ public interface IOperatorTrainingService
     /// Deletes a training module by id.
     /// </summary>
     Task DeleteAsync(int id);
+
+    /// <summary>
+    /// Gets all training steps for the supplied modules.
+    /// </summary>
+    Task<IReadOnlyList<TrainingStep>> GetStepsAsync(IEnumerable<int>? moduleIds = null);
+
+    /// <summary>
+    /// Creates a new training step.
+    /// </summary>
+    Task<TrainingStep> CreateStepAsync(TrainingStep step);
+
+    /// <summary>
+    /// Updates an existing training step.
+    /// </summary>
+    Task<TrainingStep?> UpdateStepAsync(TrainingStep step);
+
+    /// <summary>
+    /// Deletes a training step by id.
+    /// </summary>
+    Task DeleteStepAsync(int id);
 }

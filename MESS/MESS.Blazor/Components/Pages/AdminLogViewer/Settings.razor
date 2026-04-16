@@ -1,0 +1,49 @@
+@page "/admin/settings"
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize(Roles = "Administrator")]
+
+<PageTitle>Settings</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row justify-content-center">
+        <div class="col-12 col-xl-10">
+            <div class="mb-4">
+                <h2 class="mb-1">Settings</h2>
+                <p class="text-muted mb-0">Choose which system configuration area you want to manage.</p>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-12 col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body d-flex flex-column">
+                            <div class="mb-3">
+                                <h4 class="mb-1">Printer Network Settings</h4>
+                                <p class="text-muted mb-0">Configure the network printer connection, label size, and print behavior.</p>
+                            </div>
+
+                            <div class="mt-auto">
+                                <a class="btn btn-primary" href="/admin/settings/printer-network">Open Printer Network Settings</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-body d-flex flex-column">
+                            <div class="mb-3">
+                                <h4 class="mb-1">ESP32-S3 DevKitC-1 Development Board</h4>
+                                <p class="text-muted mb-0">View and manage settings related to the ESP32-S3 DevKitC-1 development board.</p>
+                            </div>
+
+                            <div class="mt-auto">
+                                <a class="btn btn-outline-primary" href="/admin/settings/esp32-s3-devkitc-1">Open ESP32-S3 Settings</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

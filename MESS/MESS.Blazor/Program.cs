@@ -7,6 +7,7 @@ using MESS.Services.CRUD.ApplicationUser;
 using MESS.Services.CRUD.PartDefinitions;
 using MESS.Services.CRUD.PartTraceability;
 using MESS.Services.CRUD.OperatorTraining;
+using MESS.Services.CRUD.DevelopmentBoardSettings;
 using MESS.Services.CRUD.PrinterSettings;
 using MESS.Services.CRUD.ProductionLogs;
 using MESS.Services.UI.LocalCacheManager;
@@ -22,6 +23,7 @@ using MESS.Services.Media.WorkInstructions;
 using MESS.Services.UI.PartTraceability;
 using MESS.Services.UI.ProductionLogEvent;
 using MESS.Services.UI.QrCodes;
+using MESS.Services.TrainingMatrix;
 using MESS.Services.UI.WorkInstructionEditor;
 using MESS.Services.UI.WorkInstructionImport;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -62,6 +64,8 @@ builder.Services.AddScoped<IProductResolver, ProductResolver>();
 builder.Services.AddScoped<IWorkInstructionService, WorkInstructionService>();
 builder.Services.AddScoped<IWorkInstructionUpdater, WorkInstructionUpdater>();
 builder.Services.AddScoped<IOperatorTrainingService, OperatorTrainingService>();
+builder.Services.AddScoped<ITrainingMatrixService, TrainingMatrixService>();
+builder.Services.AddScoped<IDevelopmentBoardSettingsService, DevelopmentBoardSettingsService>();
 builder.Services.AddScoped<IPrinterSettingsService, PrinterSettingsService>();
 builder.Services.AddScoped<IPartNodeResolver, PartNodeResolver>();
 builder.Services.AddScoped<IPartDefinitionResolver, PartDefinitionResolver>();
@@ -83,11 +87,15 @@ builder.Services.AddScoped<IWorkInstructionEditorService, WorkInstructionEditorS
 builder.Services.AddScoped<IWorkInstructionFileService, WorkInstructionFileService>();
 builder.Services.AddScoped<IWorkInstructionImportService, WorkInstructionImportService>();
 builder.Services.AddScoped<IWorkInstructionImageService, WorkInstructionImageService>();
+builder.Services.AddSingleton<ITrainingMatrixStatusStore, TrainingMatrixStatusStore>();
+builder.Services.AddHostedService<MqttTrainingMatrixSubscriber>();
 builder.Services.AddScoped<RoleInitializer>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 builder.Services.AddRazorPages();
 builder.Services.AddMudServices();
+builder.Services.Configure<TrainingMatrixMqttOptions>(
+    builder.Configuration.GetSection(TrainingMatrixMqttOptions.SectionName));
 
 builder.Services.Configure<IdentityOptions>(options =>
 {
@@ -148,6 +156,10 @@ var app = builder.Build();
 // Seed data
 using (var scope = app.Services.CreateScope())
 {
+    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationContext>>();
+    await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+    await dbContext.Database.MigrateAsync();
+
     // Initializes the roles if they are not already created in the database
     var roleInit = scope.ServiceProvider.GetRequiredService<RoleInitializer>();
     await roleInit.InitializeAsync();

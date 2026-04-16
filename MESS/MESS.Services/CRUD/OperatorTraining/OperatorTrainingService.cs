@@ -113,6 +113,97 @@ public class OperatorTrainingService : IOperatorTrainingService
         Log.Information("Deleted operator training module {TrainingModuleId}", id);
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TrainingStep>> GetStepsAsync(IEnumerable<int>? moduleIds = null)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var query = context.TrainingSteps.AsNoTracking();
+
+        if (moduleIds is not null)
+        {
+            var ids = moduleIds.Distinct().ToList();
+            if (ids.Count > 0)
+            {
+                query = query.Where(step => ids.Contains(step.OperatorTrainingModuleId));
+            }
+        }
+
+        return await query
+            .OrderBy(step => step.OperatorTrainingModuleId)
+            .ThenBy(step => step.StepOrder)
+            .ThenBy(step => step.Title)
+            .ToListAsync();
+    }
+
+    /// <inheritdoc />
+    public async Task<TrainingStep> CreateStepAsync(TrainingStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var currentUser = await GetCurrentUserNameAsync();
+        step.Title = step.Title.Trim();
+        step.Description = step.Description.Trim();
+        step.CreatedBy = currentUser;
+        step.LastModifiedBy = currentUser;
+
+        context.TrainingSteps.Add(step);
+        await context.SaveChangesAsync();
+
+        Log.Information("Created training step {TrainingStepId}", step.Id);
+
+        return step;
+    }
+
+    /// <inheritdoc />
+    public async Task<TrainingStep?> UpdateStepAsync(TrainingStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var currentUser = await GetCurrentUserNameAsync();
+
+        var existingStep = await context.TrainingSteps.FirstOrDefaultAsync(existing => existing.Id == step.Id);
+        if (existingStep is null)
+        {
+            Log.Warning("Training step {TrainingStepId} was not found for update", step.Id);
+            return null;
+        }
+
+        existingStep.Title = step.Title.Trim();
+        existingStep.Description = step.Description.Trim();
+        existingStep.StepOrder = step.StepOrder;
+        existingStep.ImagePath = step.ImagePath;
+        existingStep.OperatorTrainingModuleId = step.OperatorTrainingModuleId;
+        existingStep.LastModifiedBy = currentUser;
+
+        await context.SaveChangesAsync();
+
+        Log.Information("Updated training step {TrainingStepId}", step.Id);
+
+        return existingStep;
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteStepAsync(int id)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var step = await context.TrainingSteps.FindAsync(id);
+        if (step is null)
+        {
+            Log.Warning("Training step {TrainingStepId} was not found for deletion", id);
+            return;
+        }
+
+        context.TrainingSteps.Remove(step);
+        await context.SaveChangesAsync();
+
+        Log.Information("Deleted training step {TrainingStepId}", id);
+    }
+
     private async Task<string> GetCurrentUserNameAsync()
     {
         var authState = await _authenticationStateProvider.GetAuthenticationStateAsync();

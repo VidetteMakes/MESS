@@ -1,17 +1,21 @@
 @page "/operator-training"
+@page "/training-matrix"
+@implements IAsyncDisposable
 @layout PhoebeLayout
 @attribute [Authorize(Roles = "Operator, Technician, Administrator")]
 @using System.ComponentModel.DataAnnotations
 @using MESS.Blazor.Components.Layout
 @using MESS.Data.Models
 @using MESS.Services.CRUD.OperatorTraining
+@using MESS.Services.TrainingMatrix
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IOperatorTrainingService OperatorTrainingService
+@inject ITrainingMatrixService TrainingMatrixService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IToastService ToastService
 
-<PageTitle>Operator Training</PageTitle>
+<PageTitle>Training Matrix</PageTitle>
 
 <AuthorizeView Roles="Operator, Technician, Administrator">
     <Authorizing>
@@ -20,91 +24,175 @@
     <NotAuthorized>
         <div class="alert alert-warning">You are not authorized to view this page.</div>
     </NotAuthorized>
-    <Authorized Context="authState">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+    <Authorized Context="auth">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
             <div>
-                <h3 class="mb-1">Operator Training</h3>
-                <p class="text-muted mb-0">Training material for operators, technicians, and administrators.</p>
+                <div class="text-muted small text-uppercase">Skill Matrix & Trainings</div>
+                <h3 class="mb-1">Competencies</h3>
+                <p class="text-muted mb-0">MQTT-fed operator proficiency matrix with step-level competencies.</p>
             </div>
-            @if (IsAdministrator)
-            {
-                <button class="btn btn-primary" @onclick="BeginCreate">
-                    <i class="bi bi-plus-circle me-1"></i> New Module
-                </button>
-            }
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary" @onclick="LoadAsync" disabled="@IsLoading">Refresh</button>
+                @if (IsAdministrator)
+                {
+                    <button class="btn btn-primary" @onclick="BeginCreateModule">New Module</button>
+                }
+            </div>
         </div>
 
         @if (IsLoading)
         {
             <div class="text-center py-5">
                 <div class="spinner-border text-primary" role="status"></div>
-                <p class="mt-2 mb-0">Loading training modules...</p>
+                <p class="mt-2 mb-0">Loading training matrix...</p>
             </div>
+        }
+        else if (Snapshot is null)
+        {
+            <div class="alert alert-danger">Unable to load the training matrix.</div>
         }
         else
         {
-            <div class="row g-4">
-                <div class="col-lg-4">
-                    <div class="card h-100 shadow-sm">
-                        <div class="card-header">
-                            <strong>Modules</strong>
-                        </div>
-                        <div class="list-group list-group-flush">
-                            @if (Modules.Count == 0)
-                            {
-                                <div class="list-group-item text-muted">No training modules available.</div>
-                            }
-                            else
-                            {
-                                @foreach (var module in Modules)
-                                {
-                                    var selectedClass = SelectedModule?.Id == module.Id ? "active" : string.Empty;
-                                    <button type="button"
-                                            class="list-group-item list-group-item-action @selectedClass"
-                                            @onclick="() => SelectModule(module.Id)">
-                                        <div class="d-flex justify-content-between align-items-start gap-2">
-                                            <div>
-                                                <div class="fw-semibold">@module.Title</div>
-                                                @if (!string.IsNullOrWhiteSpace(module.Summary))
-                                                {
-                                                    <div class="small opacity-75">@module.Summary</div>
-                                                }
-                                            </div>
-                                            @if (IsAdministrator && !module.IsPublished)
-                                            {
-                                                <span class="badge text-bg-warning">Draft</span>
-                                            }
-                                        </div>
-                                    </button>
-                                }
-                            }
-                        </div>
+            <div class="card shadow-sm mb-3">
+                <div class="card-body">
+                    <div class="matrix-tabs">
+                        <button class="@GetTabClass(0)" @onclick="() => SelectModule(0)">All competencies</button>
+                        @foreach (var module in Snapshot.Modules)
+                        {
+                            <button class="@GetTabClass(module.Id)" @onclick="() => SelectModule(module.Id)">@module.Title</button>
+                        }
                     </div>
                 </div>
+            </div>
 
-                <div class="col-lg-8">
-                    @if (IsAdministrator && IsEditing)
+            <div class="card shadow-sm mb-3">
+                <div class="card-body d-flex flex-wrap gap-3 align-items-center justify-content-between">
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="fw-semibold">Skill Matrix</span>
+                        <span class="badge @GetConnectionBadgeClass(Snapshot.MqttState)">@GetConnectionLabel(Snapshot.MqttState)</span>
+                        <span class="text-muted small">@Snapshot.MqttState.Broker</span>
+                        @if (Snapshot.MqttState.LastMessageOnUtc is not null)
+                        {
+                            <span class="text-muted small">Last update @Snapshot.MqttState.LastMessageOnUtc.Value.ToLocalTime().ToString("g")</span>
+                        }
+                    </div>
+                    <div class="d-flex flex-wrap gap-2">
+                        @for (var score = 1; score <= 5; score++)
+                        {
+                            <div class="legend-pill @GetScoreClass(score)">@score @GetScoreLabel(score)</div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body p-3">
+                    <div class="row g-3 align-items-center mb-3">
+                        <div class="col-lg-4">
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <InputText class="form-control" @bind-Value="UserFilter" placeholder="Filter users" />
+                            </div>
+                        </div>
+                        <div class="col-lg-8 text-lg-end">
+                            <span class="text-muted small">@FilteredOperators.Count operators, @FilteredCompetencies.Count competencies</span>
+                        </div>
+                    </div>
+
+                    @if (FilteredOperators.Count == 0 || FilteredCompetencies.Count == 0)
                     {
-                        <div class="card shadow-sm">
+                        <div class="text-muted p-3">No matrix data matches the current selection.</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle matrix-table mb-0">
+                                <thead>
+                                <tr>
+                                    <th class="sticky-left competency-col">Competency</th>
+                                    <th class="sticky-left coverage-col">Coverage</th>
+                                    @foreach (var op in FilteredOperators)
+                                    {
+                                        <th class="operator-col">
+                                            <div class="operator-name">@op.DisplayName</div>
+                                            <div class="small text-muted">@op.UserName</div>
+                                        </th>
+                                    }
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var group in GroupedCompetencies)
+                                {
+                                    <tr class="group-row">
+                                        <td class="sticky-left competency-col fw-semibold" colspan="2">@group.Key</td>
+                                        @foreach (var _ in FilteredOperators)
+                                        {
+                                            <td class="group-fill"></td>
+                                        }
+                                    </tr>
+
+                                    @foreach (var competency in group)
+                                    {
+                                        <tr>
+                                            <td class="sticky-left competency-col">
+                                                <div class="fw-semibold">@competency.Title</div>
+                                                @if (!string.IsNullOrWhiteSpace(competency.Description))
+                                                {
+                                                    <div class="small text-muted matrix-description">@competency.Description</div>
+                                                }
+                                            </td>
+                                            <td class="sticky-left coverage-col">
+                                                <span class="coverage-value">@competency.Coverage.ToString("0.0")</span>
+                                            </td>
+                                            @foreach (var op in FilteredOperators)
+                                            {
+                                                var cell = competency.Cells[op.UserId];
+                                                <td>
+                                                    <div class="score-box @GetScoreClass(cell.Score)">
+                                                        @GetScoreDisplay(cell.Score)
+                                                    </div>
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (IsAdministrator)
+            {
+                <div class="row g-4">
+                    <div class="col-xl-5">
+                        <div class="card shadow-sm h-100">
                             <div class="card-header d-flex justify-content-between align-items-center">
                                 <strong>@(Editor.Id == 0 ? "Create Module" : "Edit Module")</strong>
-                                <button class="btn btn-sm btn-outline-secondary" @onclick="CancelEdit">Cancel</button>
+                                @if (IsEditingModule)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelModuleEdit">Cancel</button>
+                                }
                             </div>
                             <div class="card-body">
-                                <EditForm Model="Editor" OnValidSubmit="SaveAsync" OnInvalidSubmit="HandleInvalidSubmit">
+                                <EditForm Model="Editor" OnValidSubmit="SaveModuleAsync" OnInvalidSubmit="HandleInvalidSubmit">
                                     <DataAnnotationsValidator />
                                     <ValidationSummary />
 
                                     <div class="mb-3">
                                         <label class="form-label">Title</label>
                                         <InputText class="form-control" @bind-Value="Editor.Title" />
-                                        <ValidationMessage For="@(() => Editor.Title)" />
                                     </div>
 
                                     <div class="mb-3">
                                         <label class="form-label">Summary</label>
                                         <InputText class="form-control" @bind-Value="Editor.Summary" />
-                                        <ValidationMessage For="@(() => Editor.Summary)" />
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Notes</label>
+                                        <InputTextArea class="form-control module-notes" @bind-Value="Editor.Content" />
                                     </div>
 
                                     <div class="row g-3 mb-3">
@@ -120,136 +208,307 @@
                                         </div>
                                     </div>
 
-                                    <div class="mb-3">
-                                        <label class="form-label">Content</label>
-                                        <InputTextArea class="form-control training-editor" @bind-Value="Editor.Content" />
-                                        <ValidationMessage For="@(() => Editor.Content)" />
-                                    </div>
-
-                                    <button class="btn btn-success" type="submit" disabled="@(IsSaving || !IsFormValid())">
-                                        @if (IsSaving)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1"></span>
-                                        }
+                                    <button class="btn btn-success" type="submit" disabled="@(IsSavingModule || !IsModuleFormValid())">
                                         Save Module
                                     </button>
                                 </EditForm>
                             </div>
                         </div>
-                    }
-                    else if (SelectedModule is not null)
-                    {
-                        <div class="card shadow-sm">
-                            <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                                <div>
-                                    <strong>@SelectedModule.Title</strong>
-                                    @if (!SelectedModule.IsPublished && IsAdministrator)
-                                    {
-                                        <span class="badge text-bg-warning ms-2">Draft</span>
-                                    }
-                                </div>
-                                @if (IsAdministrator)
+                    </div>
+
+                    <div class="col-xl-7">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <strong>Modules</strong>
+                                @if (SelectedModuleId > 0)
                                 {
-                                    <div class="d-flex gap-2">
-                                        <button class="btn btn-sm btn-outline-primary" @onclick="() => BeginEdit(SelectedModule)">
-                                            Edit
-                                        </button>
-                                        <button class="btn btn-sm btn-outline-danger" @onclick="DeleteAsync">
-                                            Delete
-                                        </button>
-                                    </div>
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="BeginAddStep">Add Competency</button>
                                 }
                             </div>
                             <div class="card-body">
-                                @if (!string.IsNullOrWhiteSpace(SelectedModule.Summary))
-                                {
-                                    <p class="lead">@SelectedModule.Summary</p>
-                                }
+                                <div class="list-group">
+                                    @foreach (var module in Snapshot.Modules)
+                                    {
+                                        <div class="list-group-item d-flex justify-content-between align-items-start gap-3">
+                                            <div>
+                                                <div class="fw-semibold">@module.Title</div>
+                                                <div class="small text-muted">@module.Summary</div>
+                                            </div>
+                                            <div class="d-flex gap-2">
+                                                <button class="btn btn-sm btn-outline-primary" @onclick="() => BeginEditModule(module)">Edit</button>
+                                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteModuleAsync(module)">Delete</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
 
-                                <div class="training-content">@SelectedModule.Content</div>
-                            </div>
-                        </div>
-                    }
-                    else
-                    {
                         <div class="card shadow-sm">
-                            <div class="card-body text-muted">
-                                Select a training module to view its content.
+                            <div class="card-header">
+                                <strong>Competency Editor</strong>
+                                <span class="text-muted small ms-2">Select a module tab to manage its competencies.</span>
+                            </div>
+                            <div class="card-body">
+                                @if (SelectedModuleId == 0)
+                                {
+                                    <div class="text-muted">Select a module tab to manage competency rows.</div>
+                                }
+                                else
+                                {
+                                    <TrainingStepEditor @ref="StepEditor"
+                                                        Steps="SelectedModuleSteps"
+                                                        AllowEdit="true"
+                                                        OnSave="SaveStepAsync"
+                                                        OnDelete="DeleteStepAsync" />
+                                }
                             </div>
                         </div>
-                    }
+                    </div>
                 </div>
-            </div>
+            }
         }
     </Authorized>
 </AuthorizeView>
 
 <style>
-    .training-editor {
-        min-height: 18rem;
+    .matrix-tabs {
+        display: flex;
+        gap: .75rem;
+        overflow-x: auto;
+        white-space: nowrap;
     }
 
-    .training-content {
-        white-space: pre-wrap;
-        line-height: 1.6;
+    .matrix-tabs button {
+        border: none;
+        background: transparent;
+        padding: .6rem .3rem;
+        border-bottom: 3px solid transparent;
+        color: #495057;
+    }
+
+    .matrix-tabs button.active {
+        border-bottom-color: #2952ff;
+        color: #2952ff;
+        font-weight: 600;
+    }
+
+    .legend-pill {
+        border-radius: 999px;
+        padding: .25rem .6rem;
+        font-size: .85rem;
+        font-weight: 600;
+    }
+
+    .matrix-table {
+        --competency-width: 24rem;
+        --coverage-width: 6rem;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+        min-width: 5.5rem;
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    .competency-col {
+        min-width: var(--competency-width);
+        text-align: left !important;
+    }
+
+    .coverage-col {
+        min-width: var(--coverage-width);
+        max-width: var(--coverage-width);
+    }
+
+    .sticky-left {
+        position: sticky;
+        background: white;
+        z-index: 2;
+    }
+
+    .matrix-table thead .sticky-left {
+        z-index: 3;
+        background: #fff;
+    }
+
+    .matrix-table .competency-col.sticky-left {
+        left: 0;
+    }
+
+    .matrix-table .coverage-col.sticky-left {
+        left: var(--competency-width);
+    }
+
+    .operator-col {
+        min-width: 7.5rem;
+    }
+
+    .operator-name {
+        font-weight: 600;
+        font-size: .9rem;
+    }
+
+    .group-row td {
+        background: #f8f9fa;
+        border-top: 2px solid #e9ecef;
+    }
+
+    .group-fill {
+        background: #f8f9fa;
+    }
+
+    .matrix-description {
+        max-width: 26rem;
+    }
+
+    .coverage-value {
+        font-weight: 700;
+        color: #5c6670;
+    }
+
+    .score-box {
+        border-radius: .45rem;
+        padding: .35rem .2rem;
+        font-weight: 700;
+        min-width: 2.4rem;
+    }
+
+    .score-0 {
+        background: #eef1f4;
+        color: #8c98a4;
+    }
+
+    .score-1 {
+        background: #ff6b6b;
+        color: white;
+    }
+
+    .score-2 {
+        background: #ffad66;
+        color: #5c2d00;
+    }
+
+    .score-3 {
+        background: #ffe27a;
+        color: #6b5800;
+    }
+
+    .score-4 {
+        background: #b8d97b;
+        color: #2f4f12;
+    }
+
+    .score-5 {
+        background: #66c681;
+        color: #0f4f27;
+    }
+
+    .module-notes {
+        min-height: 10rem;
     }
 </style>
 
 @code {
     private readonly TrainingModuleEditor Editor = new();
-    private List<OperatorTrainingModule> Modules { get; set; } = [];
-    private OperatorTrainingModule? SelectedModule { get; set; }
+    private readonly CancellationTokenSource RefreshCts = new();
+    private TrainingMatrixSnapshot? Snapshot { get; set; }
+    private List<TrainingStep> Steps { get; set; } = [];
+    private int SelectedModuleId { get; set; }
+    private string UserFilter { get; set; } = string.Empty;
     private bool IsAdministrator { get; set; }
-    private bool IsEditing { get; set; }
+    private bool IsEditingModule { get; set; }
     private bool IsLoading { get; set; } = true;
-    private bool IsSaving { get; set; }
+    private bool IsSavingModule { get; set; }
+    private Task? RefreshLoopTask { get; set; }
+    private TrainingStepEditor? StepEditor { get; set; }
+
+    private IReadOnlyList<TrainingMatrixOperator> FilteredOperators => Snapshot?.Operators
+        .Where(op => string.IsNullOrWhiteSpace(UserFilter) ||
+                     op.DisplayName.Contains(UserFilter, StringComparison.OrdinalIgnoreCase) ||
+                     op.UserName.Contains(UserFilter, StringComparison.OrdinalIgnoreCase))
+        .ToList() ?? [];
+
+    private IReadOnlyList<TrainingMatrixCompetencyRow> FilteredCompetencies => Snapshot?.Competencies
+        .Where(row => SelectedModuleId == 0 || row.ModuleId == SelectedModuleId)
+        .ToList() ?? [];
+
+    private IEnumerable<IGrouping<string, TrainingMatrixCompetencyRow>> GroupedCompetencies => FilteredCompetencies
+        .GroupBy(row => row.ModuleTitle)
+        .OrderBy(group => group.Key);
+
+    private List<TrainingStep> SelectedModuleSteps => SelectedModuleId == 0
+        ? []
+        : Steps.Where(step => step.OperatorTrainingModuleId == SelectedModuleId).OrderBy(step => step.StepOrder).ToList();
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         IsAdministrator = authState.User.IsInRole("Administrator");
 
-        await LoadModulesAsync();
+        await LoadAsync();
+        RefreshLoopTask = RunRefreshLoopAsync(RefreshCts.Token);
     }
 
-    private async Task LoadModulesAsync()
+    private async Task LoadAsync()
     {
         IsLoading = true;
 
         try
         {
-            Modules = (await OperatorTrainingService.GetAllAsync(IsAdministrator)).ToList();
-            SelectedModule = SelectedModule is null
-                ? Modules.FirstOrDefault()
-                : Modules.FirstOrDefault(module => module.Id == SelectedModule.Id) ?? Modules.FirstOrDefault();
+            Snapshot = await TrainingMatrixService.GetSnapshotAsync(IsAdministrator);
+            Steps = (await OperatorTrainingService.GetStepsAsync()).ToList();
+
+            if (SelectedModuleId == 0 && Snapshot.Modules.Count > 0)
+            {
+                SelectedModuleId = Snapshot.Modules[0].Id;
+            }
+
+            if (SelectedModuleId > 0 && Snapshot.Modules.All(module => module.Id != SelectedModuleId))
+            {
+                SelectedModuleId = Snapshot.Modules.FirstOrDefault()?.Id ?? 0;
+            }
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to load training modules: {ex.Message}");
-            Modules = [];
-            SelectedModule = null;
+            Snapshot = null;
+            ToastService.ShowError($"Failed to load the training matrix: {ex.Message}");
         }
         finally
         {
             IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RunRefreshLoopAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            await LoadAsync();
         }
     }
 
     private void SelectModule(int moduleId)
     {
-        SelectedModule = Modules.FirstOrDefault(module => module.Id == moduleId);
-        IsEditing = false;
-        ResetEditor();
+        SelectedModuleId = moduleId;
     }
 
-    private void BeginCreate()
+    private string GetTabClass(int moduleId)
     {
-        IsEditing = true;
-        SelectedModule = null;
+        return SelectedModuleId == moduleId ? "active" : string.Empty;
+    }
+
+    private void BeginCreateModule()
+    {
+        IsEditingModule = true;
         ResetEditor();
     }
 
-    private void BeginEdit(OperatorTrainingModule module)
+    private void BeginEditModule(OperatorTrainingModule module)
     {
         Editor.Id = module.Id;
         Editor.Title = module.Title;
@@ -257,19 +516,18 @@
         Editor.Content = module.Content;
         Editor.DisplayOrder = module.DisplayOrder;
         Editor.IsPublished = module.IsPublished;
-        IsEditing = true;
+        IsEditingModule = true;
     }
 
-    private void CancelEdit()
+    private void CancelModuleEdit()
     {
-        IsEditing = false;
+        IsEditingModule = false;
         ResetEditor();
-        SelectedModule ??= Modules.FirstOrDefault();
     }
 
-    private async Task SaveAsync()
+    private async Task SaveModuleAsync()
     {
-        IsSaving = true;
+        IsSavingModule = true;
 
         try
         {
@@ -285,18 +543,20 @@
 
             if (module.Id == 0)
             {
-                SelectedModule = await OperatorTrainingService.CreateAsync(module);
+                var created = await OperatorTrainingService.CreateAsync(module);
+                SelectedModuleId = created.Id;
                 ToastService.ShowSuccess("Training module created.");
             }
             else
             {
-                SelectedModule = await OperatorTrainingService.UpdateAsync(module);
+                await OperatorTrainingService.UpdateAsync(module);
+                SelectedModuleId = module.Id;
                 ToastService.ShowSuccess("Training module updated.");
             }
 
-            IsEditing = false;
+            IsEditingModule = false;
             ResetEditor();
-            await LoadModulesAsync();
+            await LoadAsync();
         }
         catch (Exception ex)
         {
@@ -304,24 +564,22 @@
         }
         finally
         {
-            IsSaving = false;
+            IsSavingModule = false;
         }
     }
 
-    private async Task DeleteAsync()
+    private async Task DeleteModuleAsync(OperatorTrainingModule module)
     {
-        if (SelectedModule is null)
-        {
-            return;
-        }
-
         try
         {
-            var deletedModuleId = SelectedModule.Id;
-            await OperatorTrainingService.DeleteAsync(deletedModuleId);
+            await OperatorTrainingService.DeleteAsync(module.Id);
+            if (SelectedModuleId == module.Id)
+            {
+                SelectedModuleId = 0;
+            }
+
             ToastService.ShowSuccess("Training module deleted.");
-            SelectedModule = null;
-            await LoadModulesAsync();
+            await LoadAsync();
         }
         catch (Exception ex)
         {
@@ -329,24 +587,120 @@
         }
     }
 
-    private void HandleInvalidSubmit()
+    private void BeginAddStep()
     {
-        ToastService.ShowWarning("The training module form has validation errors. Check the highlighted fields.");
+        StepEditor?.BeginAddStep();
     }
 
-    private bool IsFormValid()
+    private async Task SaveStepAsync(TrainingStep step)
     {
-        return !string.IsNullOrWhiteSpace(Editor.Title) && !string.IsNullOrWhiteSpace(Editor.Content);
+        try
+        {
+            step.OperatorTrainingModuleId = SelectedModuleId;
+
+            if (step.Id == 0)
+            {
+                await OperatorTrainingService.CreateStepAsync(step);
+                ToastService.ShowSuccess("Competency created.");
+            }
+            else
+            {
+                await OperatorTrainingService.UpdateStepAsync(step);
+                ToastService.ShowSuccess("Competency updated.");
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to save competency: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteStepAsync(TrainingStep step)
+    {
+        try
+        {
+            await OperatorTrainingService.DeleteStepAsync(step.Id);
+            ToastService.ShowSuccess("Competency deleted.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError($"Failed to delete competency: {ex.Message}");
+        }
+    }
+
+    private void HandleInvalidSubmit()
+    {
+        ToastService.ShowWarning("The module form has validation errors.");
+    }
+
+    private bool IsModuleFormValid()
+    {
+        return !string.IsNullOrWhiteSpace(Editor.Title);
     }
 
     private void ResetEditor()
     {
+        var nextOrder = Snapshot?.Modules.Count > 0 ? Snapshot.Modules.Max(module => module.DisplayOrder) + 1 : 1;
         Editor.Id = 0;
         Editor.Title = string.Empty;
         Editor.Summary = string.Empty;
         Editor.Content = string.Empty;
-        Editor.DisplayOrder = Modules.Count == 0 ? 1 : Modules.Max(module => module.DisplayOrder) + 1;
+        Editor.DisplayOrder = nextOrder;
         Editor.IsPublished = true;
+    }
+
+    private static string GetScoreClass(int score) => $"score-{Math.Clamp(score, 0, 5)}";
+
+    private static string GetScoreDisplay(int score) => score == 0 ? "-" : score.ToString();
+
+    private static string GetScoreLabel(int score) => score switch
+    {
+        1 => "Novice",
+        2 => "Beginner",
+        3 => "Intermediate",
+        4 => "Advanced",
+        5 => "Expert",
+        _ => "None"
+    };
+
+    private static string GetConnectionBadgeClass(TrainingMatrixMqttState state)
+    {
+        if (!state.IsEnabled)
+        {
+            return "text-bg-secondary";
+        }
+
+        return state.IsConnected ? "text-bg-success" : "text-bg-warning";
+    }
+
+    private static string GetConnectionLabel(TrainingMatrixMqttState state)
+    {
+        if (!state.IsEnabled)
+        {
+            return "MQTT Disabled";
+        }
+
+        return state.IsConnected ? "MQTT Connected" : "MQTT Disconnected";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await RefreshCts.CancelAsync();
+        RefreshCts.Dispose();
+
+        if (RefreshLoopTask is not null)
+        {
+            try
+            {
+                await RefreshLoopTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
     }
 
     private sealed class TrainingModuleEditor
@@ -360,7 +714,6 @@
         [StringLength(500)]
         public string Summary { get; set; } = string.Empty;
 
-        [Required]
         public string Content { get; set; } = string.Empty;
 
         [Range(0, int.MaxValue)]

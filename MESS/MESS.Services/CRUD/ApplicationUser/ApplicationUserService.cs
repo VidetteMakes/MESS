@@ -1,4 +1,4 @@
-﻿using System.Transactions;
+using System.Transactions;
 using MESS.Data.Context;
 using MESS.Services.Files.ApplicationUsers;
 using Microsoft.AspNetCore.Identity;
@@ -51,7 +51,18 @@ public class ApplicationUserService : IApplicationUserService
         {
             var user = await _userManager.FindByNameAsync(username);
 
-            if (user != null) await _signInManager.SignInAsync(user, isPersistent: false);
+            if (user == null)
+            {
+                return false;
+            }
+
+            // Matches login dropdown: locked when AspNetUsers.LockoutEnd is set (any value).
+            if (user.LockoutEnd != null)
+            {
+                return false;
+            }
+
+            await _signInManager.SignInAsync(user, isPersistent: false);
             return true;
         }
         catch (Exception e)
@@ -86,6 +97,22 @@ public class ApplicationUserService : IApplicationUserService
         catch (Exception e)
         {
             Log.Warning("Unable to GetAllAsync in ApplicationUserService: Exception thrown: {Exception}", e.ToString());
+            return [];
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<List<ApplicationUser>> GetUsersForLoginDropdownAsync()
+    {
+        try
+        {
+            return await _context.Users
+                .Where(u => u.LockoutEnd == null)
+                .ToListAsync();
+        }
+        catch (Exception e)
+        {
+            Log.Warning("Unable to GetUsersForLoginDropdownAsync in ApplicationUserService: Exception thrown: {Exception}", e.ToString());
             return [];
         }
     }

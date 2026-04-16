@@ -7,6 +7,7 @@
 @using MESS.Services.DTOs.Tags
 @using MESS.Services.UI.QrCodes
 @using Microsoft.AspNetCore.Authorization
+@using Serilog
 @inject ITagService TagService
 @inject IToastService ToastService
 @inject IQrCodeService QrCodeService
@@ -224,7 +225,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to load tags: {ex.Message}");
+            Log.Error(ex, "Failed to load tags for TagManager");
+            ToastService.ShowError("Tags could not be loaded. Please refresh the page.");
             Tags = new List<TagDTO>();
         }
 
@@ -286,7 +288,8 @@
             }
             catch (Exception ex)
             {
-                ToastService.ShowError($"Failed to create tag '{tag.Code}': {ex.Message}");
+                Log.Error(ex, "Failed to create tag {TagCode}", tag.Code);
+                ToastService.ShowError($"Could not create tag '{tag.Code}'. Please try again.");
             }
         }
 
@@ -305,7 +308,8 @@
             }
             catch (Exception ex)
             {
-                ToastService.ShowError($"Failed to delete tag '{tag.Code}': {ex.Message}");
+                Log.Error(ex, "Failed to delete tag {TagId} ({TagCode})", tag.Id, tag.Code);
+                ToastService.ShowError($"Could not delete tag '{tag.Code}'. Please try again.");
             }
 
             await LoadTagsAsync();
@@ -344,7 +348,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to create tags: {ex.Message}");
+            Log.Error(ex, "Bulk tag create failed (count {Count}, scheme {Scheme})", _bulkCount, _bulkScheme);
+            ToastService.ShowError("Tags could not be created. Please try again.");
         }
         finally
         {
@@ -379,8 +384,9 @@
             {
                 await QrCodeService.PrintAsync(tag.Code, tag.Code);
             }
-            catch
+            catch (Exception printEx)
             {
+                Log.Warning(printEx, "QR print failed for tag {TagCode}; not marking printed", tag.Code);
                 ToastService.ShowError("Printer failed. Tag was NOT marked as printed.");
                 return;
             }
@@ -396,7 +402,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to print tag '{tag.Code}': {ex.Message}");
+            Log.Error(ex, "Failed after print flow for tag {TagCode}", tag.Code);
+            ToastService.ShowError($"Could not complete printing for tag '{tag.Code}'. Please try again.");
         }
     }
     
@@ -444,9 +451,10 @@
                     await HandlePrintTagAsync(tag);
                     successCount++;
                 }
-                catch
+                catch (Exception loopEx)
                 {
-                    // Individual failures already handled in HandlePrintTagAsync
+                    // Manual review: bulk loop stops on first unexpected throw (distinct from toast-only paths inside HandlePrintTagAsync).
+                    Log.Warning(loopEx, "Bulk print loop stopped after tag {TagCode}", tag.Code);
                     break;
                 }
             }
@@ -457,7 +465,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Bulk print failed: {ex.Message}");
+            Log.Error(ex, "Bulk print operation failed");
+            ToastService.ShowError("Bulk print could not be completed. Please try again.");
         }
         finally
         {
@@ -477,7 +486,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Failed to retire tag '{tag.Code}': {ex.Message}");
+            Log.Error(ex, "Failed to retire tag {TagId} ({TagCode})", tag.Id, tag.Code);
+            ToastService.ShowError($"Could not retire tag '{tag.Code}'. Please try again.");
         }
     }
 }

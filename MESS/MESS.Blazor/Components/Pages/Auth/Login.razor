@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using MESS.Data.Models
 @using MESS.Services.CRUD.ApplicationUser
 @using Microsoft.AspNetCore.Components.Authorization
@@ -93,7 +93,7 @@
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        ApplicationUsers = await ApplicationUserService.GetAllAsync();
+        ApplicationUsers = await ApplicationUserService.GetUsersForLoginDropdownAsync();
     }
 
     private bool _isMouseOverDropdown;

@@ -3,6 +3,7 @@
 @using MESS.Services.DTOs.WorkInstructions.Form
 @using MESS.Services.Files.WorkInstructions
 @using MESS.Services.UI.WorkInstructionImport
+@using Serilog
 @inject IWorkInstructionFileService WorkInstructionFileService
 @inject IWorkInstructionImportService WorkInstructionImportService
 @inject IToastService ToastService
@@ -63,44 +64,58 @@
             return;
         }
 
-        // Step 1: Convert uploaded file to file-layer DTO
-        var fileImportResult = await WorkInstructionFileService.ImportFromXlsx(File);
-
-        if (fileImportResult.Status == ImportStatus.Error)
+        try
         {
-            StatusMessage = fileImportResult.ImportError?.ToString() ?? "Unknown import error";
-            ToastService.ShowError(StatusMessage, 10000);
-            IsImporting = false;
-            return;
-        }
+            // Step 1: Convert uploaded file to file-layer DTO
+            var fileImportResult = await WorkInstructionFileService.ImportFromXlsx(File);
 
-        var fileDto = fileImportResult.WorkInstruction;
-        if (fileDto == null)
+            if (fileImportResult.Status == ImportStatus.Error)
+            {
+                // Full detail in logs only; user sees a safe summary (file errors may contain paths or parser internals).
+                Log.Warning("Work instruction spreadsheet import failed: {Detail}", fileImportResult.ImportError?.ToString());
+                StatusMessage = "The spreadsheet could not be read. Ensure it is a valid work instruction export and try again.";
+                ToastService.ShowError(StatusMessage, 10000);
+                return;
+            }
+
+            var fileDto = fileImportResult.WorkInstruction;
+            if (fileDto == null)
+            {
+                ToastService.ShowError("Imported file contained no work instruction data.");
+                return;
+            }
+
+            // Step 2: Use the import service to resolve references and validate
+            var importResult = await WorkInstructionImportService.ImportAsync(fileDto);
+
+            if (!importResult.Success)
+            {
+                // Domain validation messages: still shown in-page for technicians; logged in full for support.
+                StatusMessage = string.Join("; ", importResult.Errors);
+                Log.Warning("Work instruction import validation failed: {Errors}", StatusMessage);
+                ToastService.ShowError("Import validation failed. Review the details shown below.", 10000);
+                return;
+            }
+
+            // Step 3: Success — get the resolved WorkInstructionFormDTO
+            var resolvedFormDto = importResult.WorkInstruction;
+
+            // Notify parent (passing resolved form DTO)
+            await OnImportComplete.InvokeAsync(resolvedFormDto);
+
+            ImportComplete = true;
+        }
+        catch (Exception ex)
         {
-            IsImporting = false;
-            ToastService.ShowError("Imported file contained no work instruction data.");
-            return;
+            // Unexpected failures: full detail in logs; generic message in UI.
+            Log.Error(ex, "Unexpected error during work instruction import");
+            ToastService.ShowError("Something went wrong while importing. Please try again.", 10000);
         }
-
-        // Step 2: Use the import service to resolve references and validate
-        var importResult = await WorkInstructionImportService.ImportAsync(fileDto);
-
-        if (!importResult.Success)
+        finally
         {
-            StatusMessage = string.Join("; ", importResult.Errors);
-            ToastService.ShowError($"Failed to import work instruction: {StatusMessage}", 10000);
+            // Ensures spinner clears on every exit path from the try (including returns).
             IsImporting = false;
-            return;
         }
-
-        // Step 3: Success — get the resolved WorkInstructionFormDTO
-        var resolvedFormDto = importResult.WorkInstruction;
-
-        // Notify parent (passing resolved form DTO)
-        await OnImportComplete.InvokeAsync(resolvedFormDto);
-
-        IsImporting = false;
-        ImportComplete = true;
     }
 
     private void LoadFile(InputFileChangeEventArgs obj)

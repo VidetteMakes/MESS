@@ -175,9 +175,10 @@
                 await module.DisposeAsync();
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Information($"JS Interop Exception: {e.Message}");
+            // Circuit teardown often throws here; log at debug with exception object for stack when needed.
+            Log.Debug(ex, "Carousel JS module dispose completed with exception (often benign)");
         }
     }
 }

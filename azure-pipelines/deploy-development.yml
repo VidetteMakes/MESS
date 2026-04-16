@@ -1,0 +1,56 @@
+# Azure DevOps — manual deploy equivalent to .github/workflows/deploy.yml (simplified).
+# GitHub-only features (gh run list, cross-workflow artifacts by run id, reusable doc workflow)
+# are replaced by: download latest successful build from your Build pipeline on branch development.
+#
+# Setup:
+# 1. Create pipeline from build-development.yml; finish one successful run.
+# 2. Open that pipeline → URL contains definitionId=NNN — set BuildPipelineId below (or as pipeline variable).
+# 3. Azure DevOps → Project settings → Service connections → New → Azure Resource Manager.
+#    Authorize the subscription that contains the App Service, name the connection (e.g. "Azure MESS dev").
+# 4. Pipeline → Edit → Variables → add AzureServiceConnection = that connection name (not a secret).
+#    (Publish Profile from Azure Portal is NOT supported by AzureRmWebAppDeployment@4 — it expects VS .pubxml MSDeploy only.)
+# 5. Grant permission: deploy pipeline → Project Settings → Pipelines → Settings → disable "Limit job authorization"
+#    scope as needed, or allow this pipeline to access the build pipeline (see Microsoft docs on DownloadPipelineArtifact).
+# 6. Create pipeline from this file; trigger: Manual only (trigger none below).
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  BuildPipelineId: '160'
+  AppArtifactName: 'net-app'
+  # Name of the ARM service connection from step 3 (or set the same variable in the pipeline UI).
+  AzureServiceConnection: 'Azure MESS dev'
+
+steps:
+  - task: DownloadPipelineArtifact@2
+    displayName: Download latest app package (development branch)
+    inputs:
+      buildType: 'specific'
+      project: '$(System.TeamProject)'
+      definition: '$(BuildPipelineId)'
+      buildVersionToDownload: 'latestFromBranch'
+      branchName: 'refs/heads/development'
+      artifactName: '$(AppArtifactName)'
+      targetPath: '$(Pipeline.Workspace)/app'
+
+  - task: ArchiveFiles@2
+    displayName: Zip site for deployment
+    inputs:
+      rootFolderOrFile: '$(Pipeline.Workspace)/app'
+      includeRootFolder: false
+      archiveType: 'zip'
+      archiveFile: '$(Build.ArtifactStagingDirectory)/site.zip'
+      replaceExistingArchive: true
+
+  - task: AzureRmWebAppDeployment@4
+    displayName: Deploy to Azure App Service (sensit-mess-dev)
+    inputs:
+      ConnectionType: 'AzureRM'
+      azureSubscription: '$(AzureServiceConnection)'
+      WebAppKind: 'webAppLinux'
+      WebAppName: 'sensit-mess-dev'
+      packageForLinux: '$(Build.ArtifactStagingDirectory)/site.zip'

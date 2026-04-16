@@ -4,6 +4,7 @@
 @using MESS.Blazor.Components.Layout
 @using MESS.Services.CRUD.Tags
 @using Microsoft.AspNetCore.Authorization
+@using Serilog
 @inject ITagService TagService
 @inject IToastService ToastService
 
@@ -121,7 +122,8 @@
         }
         catch (Exception ex)
         {
-            _scannedTags.Add(new ScannedTag { Code = code, Success = false, Message = ex.Message });
+            Log.Warning(ex, "Tag scan/unassign failed for code {TagCode}", code);
+            _scannedTags.Add(new ScannedTag { Code = code, Success = false, Message = "Could not unassign this tag." });
         }
 
         StateHasChanged();
@@ -152,7 +154,8 @@
             }
             catch (Exception ex)
             {
-                scanned.Message = ex.Message;
+                Log.Warning(ex, "Retry unassign failed for scanned code {TagCode}", scanned.Code);
+                scanned.Message = "Could not unassign this tag.";
             }
         }
 

@@ -1,6 +1,7 @@
-﻿@using MESS.Data.Models
+@using MESS.Data.Models
 @using MESS.Services.DTOs
 @using Microsoft.AspNetCore.Identity
+@using Serilog
 @inject UserManager<ApplicationUser> UserManager
 @inject IToastService ToastService
 
@@ -149,9 +150,11 @@
                     break;
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine(e);
+            // Structured log + safe UI: avoids silent failure (was Console-only) and hides raw exception text from users.
+            Log.Error(ex, "Role update failed for user {UserId}, role {Role}", User?.Id, selectedRole);
+            ToastService.ShowError("Could not update roles. Please try again or contact support.");
         }
     }
 
@@ -164,7 +167,6 @@
         
         try
         {
-            ToastService.ShowSuccess("Message");
             if (IsLockedOut)
             {
                 await UserManager.SetLockoutEndDateAsync(User, null);
@@ -178,9 +180,10 @@
                 ToastService.ShowWarning("User locked.");
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine(e);
+            Log.Error(ex, "Lockout toggle failed for user {UserId}", User.Id);
+            ToastService.ShowError("Could not change lock status. Please try again.");
         }
     }
 
@@ -216,10 +219,10 @@
                 ToastService.ShowError($"Failed to delete user: {string.Join(", ", result.Errors.Select(e => e.Description))}");
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine(e);
-            ToastService.ShowError($"Error deleting user: {e.Message}");
+            Log.Error(ex, "Unexpected error deleting user {UserId}", User.Id);
+            ToastService.ShowError("Could not delete the user. Please try again or contact support.");
         }
         finally
         {

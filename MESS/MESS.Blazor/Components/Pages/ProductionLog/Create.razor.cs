@@ -1,4 +1,4 @@
-﻿using MESS.Blazor.Components.Dialogs;
+using MESS.Blazor.Components.Dialogs;
 using MESS.Services.DTOs.ProductionLogs.Cache;
 using MESS.Services.DTOs.ProductionLogs.Form;
 using MESS.Services.DTOs.ProductionLogs.LogSteps.Form;
@@ -316,9 +316,9 @@ public partial class Create : ComponentBase, IAsyncDisposable
             var productsAsync = await ProductService.GetAllAsync();
             Products = productsAsync.ToList();
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error("Error loading products for the Create view: {Message}", e.Message);
+            Log.Error(ex, "Error loading products for the production log Create view");
         }
     }
     
@@ -614,9 +614,9 @@ public partial class Create : ComponentBase, IAsyncDisposable
                         step.Attempts.Any(a => a.SubmitTime != DateTimeOffset.MinValue)));
             });
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error("Error checking work instruction status: {Message}", e.Message);
+            Log.Error(ex, "Error checking work instruction completion status");
             return false;
         }
     }

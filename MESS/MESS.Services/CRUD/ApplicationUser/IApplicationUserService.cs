@@ -30,6 +30,11 @@ public interface IApplicationUserService
     ///</summary>
     ///<returns>List of ApplicationUser objects</returns>
     public Task<List<ApplicationUser>> GetAllAsync();
+
+    /// <summary>
+    /// Users with <c>LockoutEnd</c> null (AspNetUsers). Any non-null date is treated as locked for the login picker.
+    /// </summary>
+    public Task<List<ApplicationUser>> GetUsersForLoginDropdownAsync();
     
     ///<summary>
     /// Retrieves a ApplicationUser by id number

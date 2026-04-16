@@ -1,5 +1,6 @@
 @using MESS.Services.UI.ProductionLogEvent
 @using Microsoft.AspNetCore.Components.Authorization
+@using Serilog
 @inject IProductionLogEventService ProductionLogEventService
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthProvider
@@ -135,7 +136,7 @@
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Failed to load JS module: {ex.Message}");
+                Log.Warning(ex, "RedTagDialog failed to load JS module");
             }
         }
     }
@@ -158,7 +159,7 @@
             }
             catch (JSException ex)
             {
-                Console.Error.WriteLine($"JS call failed: {ex.Message}");
+                Log.Warning(ex, "RedTagDialog printRedTagById JS interop failed");
             }
         }
 

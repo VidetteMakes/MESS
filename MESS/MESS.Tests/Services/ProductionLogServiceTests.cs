@@ -139,7 +139,7 @@ public class ProductionLogServiceTests : IDisposable
         await using var context = new ApplicationContext(_options);
         var logs = await context.ProductionLogs
             .Where(l => result.CreatedIds.Contains(l.Id))
-            .ToListAsync();
+            .ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(3, logs.Count);
         Assert.All(logs, l => Assert.Equal(workInstructionId, l.WorkInstructionId));

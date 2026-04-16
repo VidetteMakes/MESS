@@ -84,9 +84,13 @@ public class WorkInstructionEditorServiceTests
     [Fact]
     public async Task LoadForEditAsync_NotFound_ShouldThrow()
     {
-        _mockWorkInstructionService.Setup(s => s.GetFormByIdAsync(99)).ReturnsAsync((WorkInstructionFormDTO?)null);
+        _mockWorkInstructionService
+            .Setup(s => s.GetFormByIdAsync(99))
+            .ReturnsAsync((WorkInstructionFormDTO?)null);
 
-        await Assert.ThrowsAsync<Exception>(() => _sut.LoadForEditAsync(99));
+        var ex = await Assert.ThrowsAsync<KeyNotFoundException>(() => _sut.LoadForEditAsync(99));
+
+        Assert.Equal("Work instruction with id 99 was not found.", ex.Message);
     }
 
     [Fact]

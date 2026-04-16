@@ -22,7 +22,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.FluentUI.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Moq;
-using Xunit.Abstractions;
 
 namespace MESS.Tests.UI_Testing.ProductionLog;
 

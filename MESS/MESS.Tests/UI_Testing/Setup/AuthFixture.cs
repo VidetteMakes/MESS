@@ -7,7 +7,7 @@ public class AuthFixture : IAsyncLifetime
 {
     public string StorageStatePath { get; } = "../../../UI_Testing/Playwright/.auth/state.json";
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // Setup browser and authenticate
         using var playwright = await Playwright.CreateAsync();
@@ -40,5 +40,5 @@ public class AuthFixture : IAsyncLifetime
         });
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask DisposeAsync() => new ValueTask(Task.CompletedTask);
 }

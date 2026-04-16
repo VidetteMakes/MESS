@@ -1,4 +1,4 @@
-﻿@page "/users"
+@page "/users"
 @layout PhoebeLayout
 @attribute [Authorize(Roles = "Technician, Administrator")]
 @using System.Text
@@ -149,10 +149,10 @@
                 ToastService.ShowSuccess($"Successfully Updated User: {user.UserName}");
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Error("Error saving user changes: {errorMessage}", e.Message);
-            ToastService.ShowError("An error occurred while saving changes");
+            Log.Error(ex, "Error saving user changes for user {UserId}", user.Id);
+            ToastService.ShowError("An error occurred while saving changes.");
         }
     }
     
@@ -227,7 +227,8 @@
         }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Import failed: {ex.Message}");
+            Log.Error(ex, "User CSV import failed");
+            ToastService.ShowError("Import failed. Check the file format and try again.");
         }
     }
 }

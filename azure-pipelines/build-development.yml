@@ -1,0 +1,49 @@
+# Azure DevOps — build stage equivalent to .github/workflows/build.yml
+# Create a pipeline in Azure DevOps pointing at this file; note the pipeline ID for deploy-development.yml.
+
+trigger:
+  branches:
+    include:
+      - development
+  paths:
+    include:
+      - MESS
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  solution: 'MESS/MESS.slnx'
+  buildConfiguration: 'Release'
+  appArtifactName: 'net-app'
+
+steps:
+  - checkout: self
+    fetchDepth: 0
+
+  - task: UseDotNet@2
+    displayName: Use .NET SDK
+    inputs:
+      packageType: 'sdk'
+      version: '10.0.x'
+
+  - script: dotnet build $(solution) --configuration $(buildConfiguration)
+    displayName: Build
+
+  - script: dotnet publish $(solution) -c $(buildConfiguration) -o $(Build.ArtifactStagingDirectory)/myapp
+    displayName: Publish
+
+  - script: echo "$(Build.SourceVersion)" > "$(Build.ArtifactStagingDirectory)/last-build-version.txt"
+    displayName: Record commit SHA
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish app package
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/myapp'
+      artifact: '$(appArtifactName)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: Publish build version file
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)/last-build-version.txt'
+      artifact: 'last-build-version'

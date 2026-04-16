@@ -1,4 +1,6 @@
 @using System.Diagnostics.CodeAnalysis
+@using Microsoft.JSInterop
+@using Serilog
 
 @inject IJSRuntime JS
 
@@ -110,12 +112,12 @@
             }
             catch (JSException jsEx)
             {
-                // defensive: log or handle and avoid crashing the circuit
-                Console.Error.WriteLine($"SortableList init failed: {jsEx.Message}");
+                // Log with full exception for support; avoid crashing the Blazor circuit.
+                Log.Warning(jsEx, "SortableList JS init failed for container {ContainerId}", Id);
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"SortableList unexpected init error: {ex}");
+                Log.Error(ex, "SortableList init failed unexpectedly for container {ContainerId}", Id);
             }
         }
     }
@@ -135,14 +137,26 @@
         {
             if (moduleRef is not null)
             {
-                // call destroy to remove Sortable instance on JS side
-                try { await moduleRef.InvokeVoidAsync("destroy", containerRef); } catch { /* ignore */ }
+                // Tear down SortableJS instance; narrow catches so disposal is never fully silent.
+                try
+                {
+                    await moduleRef.InvokeVoidAsync("destroy", containerRef);
+                }
+                catch (JSDisconnectedException)
+                {
+                    // Expected when the SignalR circuit is already gone.
+                }
+                catch (JSException jsEx)
+                {
+                    Log.Debug(jsEx, "SortableList destroy skipped or failed during dispose");
+                }
+
                 await moduleRef.DisposeAsync();
             }
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error disposing SortableList module: {e}");
+            Log.Warning(ex, "Error disposing SortableList module for container {ContainerId}", Id);
         }
         finally
         {

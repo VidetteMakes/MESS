@@ -1,5 +1,6 @@
-﻿@using MESS.Services.DTOs.WorkInstructions.File
+@using MESS.Services.DTOs.WorkInstructions.File
 @using MESS.Services.Files.WorkInstructions
+@using Serilog
 @inject IWorkInstructionFileService WorkInstructionFileService
 @inject IToastService ToastService
 @inject IJSRuntime JsRuntime
@@ -59,38 +60,53 @@
         StateHasChanged(); // force UI refresh to show spinner immediately
         await Task.Yield(); // yield control to let UI update
         
+        string? exportedServerPath = null;
         try
         {
-            var workInstructionPath =
+            exportedServerPath =
                 await WorkInstructionFileService.ExportToXlsxAsync(WorkInstruction, progress, _cts.Token);
 
-            if (string.IsNullOrEmpty(workInstructionPath))
+            if (string.IsNullOrEmpty(exportedServerPath))
             {
                 ToastService.ShowError($"Unable to Download Work Instruction: {WorkInstruction.Title}. Please try again.");
                 return;
             }
 
-            await using var fileStream = File.OpenRead(workInstructionPath);
-            using var streamRef = new DotNetStreamReference(stream: fileStream);
-            
-            // Sanitize filename - remove invalid characters
-            var fileName = string.Join("_", (WorkInstruction.Title + WorkInstruction.Version).Split(Path.GetInvalidFileNameChars()));
-            fileName = $"{fileName}.xlsx";
-            
-            await JsRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
-            
+            // JS reads the full stream before returning; close the file before deleting from disk.
+            await using (var fileStream = File.OpenRead(exportedServerPath))
+            {
+                using var streamRef = new DotNetStreamReference(stream: fileStream);
+
+                // Sanitize filename - remove invalid characters
+                var fileName = string.Join("_", (WorkInstruction.Title + WorkInstruction.Version).Split(Path.GetInvalidFileNameChars()));
+                fileName = $"{fileName}.xlsx";
+
+                await JsRuntime.InvokeVoidAsync("downloadFileFromStream", fileName, streamRef);
+            }
+
             // Notify parent that download is done
             if (OnDownloadComplete.HasDelegate)
             {
                 await OnDownloadComplete.InvokeAsync();
             }
         }
+        catch (OperationCanceledException)
+        {
+            // User cancelled export; no error toast — avoids treating cancellation as failure.
+            ToastService.ShowInfo("Export was cancelled.");
+        }
         catch (Exception ex)
         {
-            ToastService.ShowError($"Error downloading file: {ex.Message}");
+            Log.Error(ex, "Work instruction export or download failed for {Title} v{Version}", WorkInstruction.Title, WorkInstruction.Version);
+            ToastService.ShowError("The file could not be downloaded. Please try again.");
         }
         finally
         {
+            if (!string.IsNullOrEmpty(exportedServerPath))
+            {
+                TryDeleteServerExportFile(exportedServerPath);
+            }
+
             _isLoading = false;
             await OnDownloadStateChanged.InvokeAsync(false); // Notify: done
         }
@@ -104,6 +120,25 @@
         if (_isLoading)
         {
             _cts?.Cancel();
+        }
+    }
+
+    /// <summary>
+    /// Removes the temporary file under wwwroot/WorkInstructionExports after the browser has received it.
+    /// </summary>
+    private static void TryDeleteServerExportFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal: download already completed; log for disk/cleanup follow-up.
+            Log.Warning(ex, "Could not delete work instruction export temp file: {Path}", path);
         }
     }
 }

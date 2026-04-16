@@ -92,7 +92,7 @@ public class WorkInstructionServiceTests
                 .UseSqlite(CONNECTION_STRING)
                 .Options);
         context.WorkInstructions.Add(workInstruction);
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
         var result = service.GetByTitle("CASE SENSITIVE TEST");

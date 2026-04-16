@@ -140,7 +140,8 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
     {
         var wi = await _workInstructionService.GetFormByIdAsync(id);
 
-        Current = wi ?? throw new Exception($"WorkInstruction with ID {id} not found.");
+        // KeyNotFoundException: typed failure for missing entity (avoid generic Exception / clearer catch boundaries).
+        Current = wi ?? throw new KeyNotFoundException($"Work instruction with id {id} was not found.");
         Mode = EditorMode.EditExisting;
         IsDirty = false;
         NotifyChanged();
@@ -171,12 +172,12 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
             .FirstOrDefault(w => w.IsLatest && (w.OriginalId == originalId || w.Id == originalId));
 
         if (templateSummary == null)
-            throw new Exception($"No latest version found for OriginalId {originalId}.");
-        
+            throw new KeyNotFoundException($"No latest work instruction version found for original id {originalId}.");
+
         var templateForm = await _workInstructionService.GetFormByIdAsync(templateSummary.Id);
 
         if (templateForm == null)
-            throw new Exception($"Failed to load WorkInstructionFormDTO for ID {templateSummary.Id}.");
+            throw new InvalidOperationException($"Could not load work instruction data for id {templateSummary.Id}.");
 
         Current = await CloneForNewVersion(templateForm);
         Mode = EditorMode.CreateNewVersion;
@@ -190,12 +191,10 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
         // Load the version to restore by ID
         var oldVersion = await _workInstructionService.GetFormByIdAsync(versionId);
         if (oldVersion == null)
-            throw new Exception($"Version with ID {versionId} not found.");
+            throw new KeyNotFoundException($"Work instruction version {versionId} was not found.");
 
         // Clone it
         var newVersion = await CloneForNewVersion(oldVersion);
-        
-        newVersion.Version = oldVersion.Version;
 
         // Assign OriginalId from the old version
         newVersion.OriginalId = oldVersion.OriginalId;
@@ -243,10 +242,11 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
     
     private async Task<WorkInstructionFormDTO> CloneForNewVersion(WorkInstructionFormDTO template)
     {
+        // New DB row must use a version string not already taken for this title (IX_WorkInstructions_Title_Version).
         return new WorkInstructionFormDTO
         {
             Title = template.Title,
-            Version = template.Version,
+            Version = IncrementVersion(template.Version),
             OriginalId = template.OriginalId ?? template.Id,
             IsActive = false,
             IsLatest = true,
@@ -367,8 +367,9 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
                 if (newVersion == null)
                     return false;
 
-                // Update Current with the newly created version's ID and status
+                // Update Current with the newly created version's ID, version label, and status
                 Current.Id = newVersion.Id;
+                Current.Version = newVersion.Version;
                 Current.IsLatest = newVersion.IsLatest;
                 Current.IsActive = newVersion.IsActive;
                 success = true;

@@ -81,9 +81,9 @@ public class WorkInstructionService : IWorkInstructionService
 
             return !hasProductionLogs;
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Log.Warning("Unable to determine if WorkInstruction: {WorkInstructionTitle} is editable. Exception Type: {ExceptionType}", workInstruction.Title, e.GetType());
+            Log.Warning(ex, "Unable to determine if work instruction {WorkInstructionId} ({Title}) is editable", workInstruction.Id, workInstruction.Title);
             return false;
         }
     }
@@ -569,6 +569,23 @@ public class WorkInstructionService : IWorkInstructionService
             // Force insert (never reuse existing id)
             workInstruction.Id = 0;
 
+            // Unique (Title, Version): prior rows stay in the table (only flags updated), so the new row
+            // must use a version string not present for this title — bump until free even if UI pre-bumped once.
+            var usedVersions = versions
+                .Select(w => w.Version)
+                .Where(v => !string.IsNullOrWhiteSpace(v))
+                .Select(v => v!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var candidate = string.IsNullOrWhiteSpace(workInstruction.Version)
+                ? "1.0"
+                : workInstruction.Version;
+            while (usedVersions.Contains(candidate))
+            {
+                candidate = BumpWorkInstructionVersionString(candidate);
+            }
+
+            workInstruction.Version = candidate;
+
             // Ensure correct root linkage
             workInstruction.OriginalId = rootId;
 
@@ -944,6 +961,25 @@ public class WorkInstructionService : IWorkInstructionService
         {
             Log.Warning(e, "Exception while removing work instructions from product ID {ProductId}.", productId);
         }
+    }
+
+    /// <summary>
+    /// Increments a simple major.minor version label for new work instruction rows (matches editor logic).
+    /// </summary>
+    private static string BumpWorkInstructionVersionString(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return "1.0";
+        }
+
+        var parts = version.Split('.');
+        if (parts.Length == 2 && int.TryParse(parts[1], out var minor))
+        {
+            return $"{parts[0]}.{minor + 1}";
+        }
+
+        return version + ".1";
     }
 
     private void ClearWorkInstructionCaches()

@@ -1,6 +1,6 @@
 using MESS.Tests.UI_Testing.Setup;
 using Microsoft.Playwright;
-using Microsoft.Playwright.Xunit;
+using Microsoft.Playwright.Xunit.v3;
 
 namespace MESS.Tests.UI_Testing.ProductionLog.EndToEnd;
 

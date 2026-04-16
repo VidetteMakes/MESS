@@ -1,4 +1,4 @@
-﻿@namespace MESS.Blazor.Components.Pages.Phoebe.MenuBar
+@namespace MESS.Blazor.Components.Pages.Phoebe.MenuBar
 @using System.ComponentModel
 @using Microsoft.AspNetCore.Components.Authorization
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction
@@ -669,6 +669,7 @@
 
             StateHasChanged();
         }
+        // Expected when debounce timer is reset or CTS is disposed — not an application error; no log noise.
         catch (TaskCanceledException) { }
         catch (ObjectDisposedException) { }
     }

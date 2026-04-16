@@ -137,8 +137,6 @@ function applyDarkModeToFluentMenus(isDark) {
     });
 }
 
-// ...rest of your code unchanged...
-
 function applyTheme(isDark) {
     document.body.classList.toggle("dark-mode", isDark);
     document.body.classList.toggle("light-mode", !isDark);

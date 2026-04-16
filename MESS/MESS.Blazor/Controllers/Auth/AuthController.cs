@@ -1,4 +1,4 @@
-﻿using MESS.Services.CRUD.ApplicationUser;
+using MESS.Services.CRUD.ApplicationUser;
 using Microsoft.AspNetCore.Mvc;
 using Serilog;
 
@@ -49,7 +49,8 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            Log.Warning("Login failed: {Message}", ex.Message);
+            // Pass exception to Serilog for stack trace and structured properties (not only ex.Message).
+            Log.Warning(ex, "Login failed for submitted identity {Email}", email);
             return Redirect("/auth/Login");
         }
     }

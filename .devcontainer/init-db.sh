@@ -2,8 +2,9 @@
 set -euo pipefail
 
 WORKSPACE_DIR="$(pwd)"
+cd "${WORKSPACE_DIR}/MESS" || { echo "Failed to change to MESS directory"; exit 1; }
 
-echo "Workspace: ${WORKSPACE_DIR}"
+echo "Workspace: ${WORKSPACE_DIR}/MESS"
 echo "Waiting for PostgreSQL on db:5432..."
 
 for i in {1..60}; do

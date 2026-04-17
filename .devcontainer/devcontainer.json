@@ -1,43 +1,43 @@
 {
-  name MESS Dev,
-  dockerComposeFile docker-compose.yml,
-  service app,
-  workspaceFolder workspaces${localWorkspaceFolderBasename}MESS,
-  shutdownAction stopCompose,
-  remoteUser vscode,
-  forwardPorts [5000, 5001, 5432],
-  portsAttributes {
-    5000 {
-      label Blazor HTTP,
-      onAutoForward notify
+  "name": "MESS Dev",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/MESS",
+  "shutdownAction": "stopCompose",
+  "remoteUser": "vscode",
+  "forwardPorts": [5000, 5001, 5432],
+  "portsAttributes": {
+    "5000": {
+      "label": "Blazor HTTP",
+      "onAutoForward": "notify"
     },
-    5001 {
-      label Blazor HTTPS,
-      onAutoForward notify
+    "5001": {
+      "label": "Blazor HTTPS",
+      "onAutoForward": "notify"
     },
-    5432 {
-      label PostgreSQL
+    "5432": {
+      "label": "PostgreSQL"
     }
   },
-  customizations {
-    vscode {
-      extensions [
-        ms-dotnettools.csdevkit,
-        ms-dotnettools.csharp,
-        ms-azuretools.vscode-docker
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csdevkit",
+        "ms-dotnettools.csharp",
+        "ms-azuretools.vscode-docker"
       ],
-      settings {
-        dotnet.defaultSolution MESS.slnx,
-        files.exclude {
-          bin true,
-          obj true
+      "settings": {
+        "dotnet.defaultSolution": "MESS/MESS.slnx",
+        "files.exclude": {
+          "bin": true,
+          "obj": true
         }
       }
     }
   },
-  postCreateCommand bash workspaces${localWorkspaceFolderBasename}.devcontainerinit-db.sh,
-  containerEnv {
-    ASPNETCORE_ENVIRONMENT Development,
-    ConnectionStrings__MESSConnection Host=db;Port=5432;Database=mess;Username=mess;Password=MessDevPassword_123!
+  "postCreateCommand": "bash .devcontainer/init-db.sh",
+  "containerEnv": {
+    "ASPNETCORE_ENVIRONMENT": "Development",
+    "ConnectionStrings__MESSConnection": "Host=db;Port=5432;Database=mess;Username=mess;Password=MessDevPassword_123!"
   }
 }

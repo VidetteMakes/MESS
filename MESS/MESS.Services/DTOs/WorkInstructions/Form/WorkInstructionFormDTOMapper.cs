@@ -113,7 +113,6 @@ public static class WorkInstructionFormDTOMapper
         {
             Title = formDto.Title,
             Version = formDto.Version,
-            IsActive = formDto.IsActive,
             ShouldGenerateQrCode = formDto.ShouldGenerateQrCode,
             PartProducedIsSerialized = formDto.PartProducedIsSerialized,
             ProducedPartName = formDto.ProducedPartName,

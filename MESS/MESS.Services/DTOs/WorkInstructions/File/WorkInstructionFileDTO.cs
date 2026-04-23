@@ -24,12 +24,8 @@ public class WorkInstructionFileDTO
     /// This value is optional and may be null if versioning is not used.
     /// </summary>
     public string? Version { get; set; }
-
-    /// <summary>
-    /// Gets or sets a value indicating whether the work instruction
-    /// is marked as active.
-    /// </summary>
-    public bool IsActive { get; set; }
+    
+    public AuditFileDTO? Audit { get; set; }
 
     /// <summary>
     /// Gets or sets a value indicating whether a QR code should be generated

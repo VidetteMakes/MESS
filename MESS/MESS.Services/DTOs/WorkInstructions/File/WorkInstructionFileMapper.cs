@@ -21,7 +21,6 @@ public static class WorkInstructionFileMapper
         {
             Title = entity.Title,
             Version = entity.Version,
-            IsActive = entity.IsActive,
             ShouldGenerateQrCode = entity.ShouldGenerateQrCode,
             PartProducedIsSerialized = entity.PartProducedIsSerialized,
             ProducedPartName = entity.PartProduced?.Name,
@@ -66,7 +65,6 @@ public static class WorkInstructionFileMapper
         {
             Title = fileDto.Title,
             Version = fileDto.Version,
-            IsActive = fileDto.IsActive,
             ShouldGenerateQrCode = fileDto.ShouldGenerateQrCode,
             PartProducedIsSerialized = fileDto.PartProducedIsSerialized,
 

@@ -25,6 +25,18 @@ public class WorkInstructionFileDTO
     /// </summary>
     public string? Version { get; set; }
     
+    /// <summary>
+    /// Gets or sets the audit metadata associated with this work instruction.
+    /// 
+    /// This data mirrors the audit fields of <see cref="AuditableEntity"/> and
+    /// represents the creation and modification history at the time the file
+    /// was exported.
+    /// 
+    /// The values are intended for traceability and documentation purposes.
+    /// During import, they may be ignored or conditionally applied depending
+    /// on system configuration, and should not be assumed to override
+    /// system-managed audit fields.
+    /// </summary>
     public AuditFileDTO? Audit { get; set; }
 
     /// <summary>

@@ -157,7 +157,7 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         if (i >= lines.Length)
             return (parts, Math.Max(1, i - start));
 
-        if (!lines[i].Trim().StartsWith("|"))
+        if (!lines[i].Trim().StartsWith('|'))
             return (parts, Math.Max(1, i - start));
 
         // skip header row
@@ -171,7 +171,6 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         while (i < lines.Length)
         {
             var line = lines[i];
-            var trimmed = line.Trim();
 
             if (string.IsNullOrWhiteSpace(line))
                 break;

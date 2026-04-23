@@ -20,37 +20,32 @@ public class WorkInstructionMarkdownLinter : IWorkInstructionMarkdownLinter
         if (!markdown.Contains("# "))
             errors.Add("Missing work instruction title (H1).");
 
-        // ------------------------
-        // PART NODE CHECK
-        // ------------------------
-        if (markdown.Contains("PartName") && !markdown.Contains("<!-- MESS:PART"))
-            errors.Add("Part node missing MESS:PART block.");
-
-        // ------------------------
-        // STEP CHECKS
-        // ------------------------
         var lines = markdown.Split('\n');
 
+        // ------------------------
+        // PARTS TABLE CHECK (NEW)
+        // ------------------------
+        ValidatePartsTable(lines, errors);
+
+        // ------------------------
+        // STEP + IMAGE CHECKS
+        // ------------------------
         for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i].Trim();
 
             if (line.StartsWith("## "))
             {
-                if (i + 1 >= lines.Length)
-                    continue;
-
                 var nextNonEmpty = GetNextNonEmpty(lines, i + 1);
 
                 if (nextNonEmpty != null && nextNonEmpty.StartsWith("## "))
                     errors.Add($"Step '{line}' has no body content.");
             }
 
-            // ------------------------
             // IMAGE VALIDATION
-            // ------------------------
             if (!line.StartsWith('!')) continue;
-            if (!line.StartsWith("![" ) || !line.Contains("](") || !line.EndsWith(')'))
+
+            if (!line.StartsWith("![") || !line.Contains("](") || !line.EndsWith(')'))
             {
                 errors.Add($"Malformed image syntax: '{line}'");
             }
@@ -59,6 +54,90 @@ public class WorkInstructionMarkdownLinter : IWorkInstructionMarkdownLinter
         return errors;
     }
 
+    // ------------------------
+    // PARTS TABLE VALIDATION
+    // ------------------------
+    private static void ValidatePartsTable(string[] lines, List<string> errors)
+    {
+        var hasPartsBlock = lines.Any(l => l.Contains("<!-- MESS:PARTS"));
+
+        // If table exists but no marker → invalid
+        var hasTable = lines.Any(l => l.TrimStart().StartsWith("|"));
+
+        if (hasTable && !hasPartsBlock)
+        {
+            errors.Add("Parts table found but missing <!-- MESS:PARTS --> block.");
+            return;
+        }
+
+        if (!hasPartsBlock)
+            return;
+
+        // Find table start
+        var startIndex = Array.FindIndex(lines, l => l.Contains("<!-- MESS:PARTS"));
+        if (startIndex < 0)
+            return;
+
+        var i = startIndex + 1;
+
+        // Skip until table header
+        while (i < lines.Length && !lines[i].Contains('|'))
+            i++;
+
+        if (i >= lines.Length)
+        {
+            errors.Add("Parts block has no table.");
+            return;
+        }
+
+        // Validate header
+        var header = lines[i].Trim();
+
+        if (!header.Contains("Part Name"))
+            errors.Add("Parts table missing 'Part Name' column.");
+
+        i++;
+
+        // Validate separator row
+        if (i >= lines.Length || !lines[i].Contains("---"))
+        {
+            errors.Add("Parts table missing separator row.");
+            return;
+        }
+
+        i++;
+
+        // Validate rows
+        for (; i < lines.Length; i++)
+        {
+            var line = lines[i].Trim();
+
+            if (string.IsNullOrWhiteSpace(line))
+                break;
+
+            if (!line.StartsWith("|"))
+                break;
+
+            var cols = line.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+            if (cols.Length < 1)
+            {
+                errors.Add($"Invalid parts row: '{line}'");
+                continue;
+            }
+
+            var partName = cols.ElementAtOrDefault(0);
+
+            if (string.IsNullOrWhiteSpace(partName))
+            {
+                errors.Add($"Part row missing Part Name: '{line}'");
+            }
+        }
+    }
+
+    // ------------------------
+    // STEP UTIL
+    // ------------------------
     private static string? GetNextNonEmpty(string[] lines, int start)
     {
         for (var i = start; i < lines.Length; i++)

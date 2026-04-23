@@ -23,7 +23,7 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
     
     private static (string yaml, string body) SplitFrontMatter(string content)
     {
-        if (!content.StartsWith("---"))
+        if (!content.TrimStart().StartsWith("---"))
             return ("", content);
 
         var parts = content.Split(["---"], 3, StringSplitOptions.None);
@@ -121,10 +121,13 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         {
             var line = lines[i].Trim();
 
-            if (line.StartsWith("<!-- MESS:PART"))
+            if (line.TrimStart().StartsWith("<!-- MESS:PARTS"))
             {
-                var (part, next) = ParsePart(lines, i);
-                nodes.Add(part);
+                var (parts, next) = ParsePartsTable(lines, i);
+
+                foreach (var part in parts)
+                    nodes.Add(part);
+
                 i = next;
             }
             else if (line.StartsWith("## "))
@@ -142,26 +145,75 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         return nodes;
     }
     
-    private static (PartNodeFileDTO node, int nextIndex) ParsePart(string[] lines, int start)
+    private static (List<PartNodeFileDTO> nodes, int nextIndex) ParsePartsTable(string[] lines, int start)
     {
-        var part = new PartNodeFileDTO();
+        var parts = new List<PartNodeFileDTO>();
 
         var i = start + 1;
 
-        while (!lines[i].Contains("-->"))
+        // Advance until we hit table start
+        while (i < lines.Length && !lines[i].TrimStart().StartsWith('|'))
+            i++;
+
+        if (i >= lines.Length)
+            return (parts, i);
+
+        // Expect header row
+        var header = lines[i].Trim();
+        if (!header.Contains("Part Name"))
+        {
+            // malformed table → skip block safely
+            return (parts, i);
+        }
+
+        i++;
+
+        // Expect separator row
+        if (i < lines.Length && lines[i].Contains("---"))
+            i++;
+        
+        while (i < lines.Length && !lines[i].Trim().StartsWith('|'))
+            i++;
+
+        // Parse rows
+        while (i < lines.Length)
         {
             var line = lines[i].Trim();
 
-            if (line.StartsWith("name:"))
-                part.PartName = GetValue(line);
+            // stop conditions
+            if (string.IsNullOrWhiteSpace(line))
+                break;
 
-            else if (line.StartsWith("number:"))
-                part.PartNumber = GetValue(line);
+            if (!line.StartsWith('|'))
+                break;
+
+            if (line.StartsWith("## ") || line.StartsWith("<!--"))
+                break;
+
+            var cols = line.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+            if (cols.Length == 0)
+            {
+                i++;
+                continue;
+            }
+
+            var partName = cols.ElementAtOrDefault(0);
+            var partNumber = cols.ElementAtOrDefault(1);
+
+            if (!string.IsNullOrWhiteSpace(partName))
+            {
+                parts.Add(new PartNodeFileDTO
+                {
+                    PartName = partName,
+                    PartNumber = string.IsNullOrWhiteSpace(partNumber) ? null : partNumber
+                });
+            }
 
             i++;
         }
 
-        return (part, i + 1);
+        return (parts, i);
     }
     
     private static (StepNodeFileDTO node, int nextIndex) ParseStep(string[] lines, int start)
@@ -235,12 +287,14 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
     private static string ExtractImage(string line)
     {
         var start = line.IndexOf('(');
-        var end = line.IndexOf(')');
-        return (start >= 0 && end > start)
-            ? line.Substring(start + 1, end - start - 1)
-            : "";
-    }
+        var end = line.IndexOf(')', start + 1);
 
+        if (start < 0 || end <= start)
+            return "";
+
+        return line.Substring(start + 1, end - start - 1);
+    }
+    
     /// <inheritdoc />
     public string Serialize(WorkInstructionFileDTO dto)
     {
@@ -251,19 +305,30 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
 
         WriteTitle(sb, dto);
 
-        foreach (var node in dto.Nodes)
+        var i = 0;
+
+        while (i < dto.Nodes.Count)
         {
-            sb.AppendLine();
+            var node = dto.Nodes[i];
 
-            switch (node)
+            if (node is StepNodeFileDTO step)
             {
-                case StepNodeFileDTO step:
-                    WriteStep(sb, step);
-                    break;
+                WriteStep(sb, step);
+                i++;
+                continue;
+            }
 
-                case PartNodeFileDTO part:
-                    WritePart(sb, part);
-                    break;
+            var parts = new List<PartNodeFileDTO>();
+
+            while (i < dto.Nodes.Count && dto.Nodes[i] is PartNodeFileDTO p)
+            {
+                parts.Add(p);
+                i++;
+            }
+
+            if (parts.Count > 0)
+            {
+                WritePartsTable(sb, parts);
             }
         }
 
@@ -311,16 +376,24 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         sb.AppendLine($"# {dto.Title}");
     }
     
-    private static void WritePart(StringBuilder sb, PartNodeFileDTO part)
+    private static void WritePartsTable(StringBuilder sb, List<PartNodeFileDTO> parts)
     {
-        sb.AppendLine("<!-- MESS:PART");
+        if (parts.Count == 0)
+            return;
 
-        sb.AppendLine($"name: {part.PartName}");
+        sb.AppendLine("<!-- MESS:PARTS -->");
+        sb.AppendLine();
+        sb.AppendLine("| Part Name | Part Number |");
+        sb.AppendLine("|-----------|-------------|");
 
-        if (!string.IsNullOrWhiteSpace(part.PartNumber))
-            sb.AppendLine($"number: {part.PartNumber}");
-
-        sb.AppendLine("-->");
+        foreach (var part in parts)
+        {
+            sb.Append("| ");
+            sb.Append(part.PartName);
+            sb.Append(" | ");
+            sb.Append(part.PartNumber ?? "");
+            sb.AppendLine(" |");
+        }
     }
     
     private static void WriteStep(StringBuilder sb, StepNodeFileDTO step)

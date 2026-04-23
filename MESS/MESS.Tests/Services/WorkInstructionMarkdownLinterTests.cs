@@ -16,9 +16,11 @@ public class WorkInstructionMarkdownLinterTests
 
                                 # Test WI
 
-                                <!-- MESS:PART
-                                name: Housing
-                                -->
+                                <!-- MESS:PARTS -->
+
+                                | Part Name | Part Number |
+                                |-----------|-------------|
+                                | Housing   |             |
 
                                 ## Step 1
                                 Do something

@@ -34,7 +34,40 @@ public class WorkInstructionMarkdownServiceTests
         Assert.Equal(original.Audit.LastModifiedBy, result.Audit.LastModifiedBy);
         Assert.Equal(original.Audit.LastModifiedOn, result.Audit.LastModifiedOn);
 
-        Assert.Equal(original.Nodes.Count, result.Nodes.Count);
+        Assert.Equal(
+            original.Nodes.Count(n => n is StepNodeFileDTO),
+            result.Nodes.Count(n => n is StepNodeFileDTO)
+        );
+
+        Assert.Equal(
+            original.Nodes.Count(n => n is PartNodeFileDTO),
+            result.Nodes.Count(n => n is PartNodeFileDTO)
+        );
+    }
+    
+    [Fact]
+    public void Serialize_Should_Preserve_Node_Order_With_Parts_And_Steps()
+    {
+        var dto = new WorkInstructionFileDTO
+        {
+            Title = "Order Test",
+            Nodes =
+            {
+                new StepNodeFileDTO { Name = "Step 1" },
+                new PartNodeFileDTO { PartName = "Part A" },
+                new StepNodeFileDTO { Name = "Step 2" },
+                new PartNodeFileDTO { PartName = "Part B" }
+            }
+        };
+
+        var markdown = _service.Serialize(dto);
+        var result = _service.Parse(markdown);
+
+        Assert.Equal(4, result.Nodes.Count);
+        Assert.IsType<StepNodeFileDTO>(result.Nodes[0]);
+        Assert.IsType<PartNodeFileDTO>(result.Nodes[1]);
+        Assert.IsType<StepNodeFileDTO>(result.Nodes[2]);
+        Assert.IsType<PartNodeFileDTO>(result.Nodes[3]);
     }
 
     // ----------------------------
@@ -89,7 +122,7 @@ public class WorkInstructionMarkdownServiceTests
     // PART NODE TEST
     // ----------------------------
     [Fact]
-    public void Serialize_ShouldIncludePartNodeComment()
+    public void Serialize_ShouldIncludePartTable()
     {
         var dto = new WorkInstructionFileDTO
         {
@@ -106,9 +139,9 @@ public class WorkInstructionMarkdownServiceTests
 
         var markdown = _service.Serialize(dto);
 
-        Assert.Contains("<!-- MESS:PART", markdown);
-        Assert.Contains("name: Housing", markdown);
-        Assert.Contains("number: HS-100", markdown);
+        Assert.Contains("<!-- MESS:PARTS -->", markdown);
+        Assert.Contains("| Part Name | Part Number |", markdown);
+        Assert.Contains("| Housing | HS-100 |", markdown);
     }
 
     // ----------------------------

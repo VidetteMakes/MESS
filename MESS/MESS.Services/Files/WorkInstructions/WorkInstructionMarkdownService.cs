@@ -123,18 +123,16 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
 
             if (line.TrimStart().StartsWith("<!-- MESS:PARTS"))
             {
-                var (parts, next) = ParsePartsTable(lines, i);
+                var (parts, consumed) = ParsePartsTable(lines, i);
 
-                foreach (var part in parts)
-                    nodes.Add(part);
-
-                i = next;
+                nodes.AddRange(parts);
+                i += consumed;
             }
             else if (line.StartsWith("## "))
             {
-                var (step, next) = ParseStep(lines, i);
+                var (step, consumed) = ParseStep(lines, i);
                 nodes.Add(step);
-                i = next;
+                i += consumed;
             }
             else
             {
@@ -151,69 +149,51 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
 
         var i = start + 1;
 
-        // Advance until we hit table start
-        while (i < lines.Length && !lines[i].TrimStart().StartsWith('|'))
-            i++;
-
-        if (i >= lines.Length)
-            return (parts, i);
-
-        // Expect header row
-        var header = lines[i].Trim();
-        if (!header.Contains("Part Name"))
-        {
-            // malformed table → skip block safely
-            return (parts, i);
-        }
-
-        i++;
-
-        // Expect separator row
-        if (i < lines.Length && lines[i].Contains("---"))
+        // Skip blank lines immediately after marker
+        while (i < lines.Length && string.IsNullOrWhiteSpace(lines[i]))
             i++;
         
-        while (i < lines.Length && !lines[i].Trim().StartsWith('|'))
+        // Must be header row
+        if (i >= lines.Length)
+            return (parts, Math.Max(1, i - start));
+
+        if (!lines[i].Trim().StartsWith("|"))
+            return (parts, Math.Max(1, i - start));
+
+        // skip header row
+        i++;
+
+        // optional separator row
+        if (i < lines.Length && lines[i].Contains("---"))
             i++;
 
         // Parse rows
         while (i < lines.Length)
         {
-            var line = lines[i].Trim();
+            var line = lines[i];
+            var trimmed = line.Trim();
 
-            // stop conditions
             if (string.IsNullOrWhiteSpace(line))
                 break;
 
             if (!line.StartsWith('|'))
                 break;
 
-            if (line.StartsWith("## ") || line.StartsWith("<!--"))
-                break;
-
             var cols = line.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-            if (cols.Length == 0)
-            {
-                i++;
-                continue;
-            }
-
-            var partName = cols.ElementAtOrDefault(0);
-            var partNumber = cols.ElementAtOrDefault(1);
-
-            if (!string.IsNullOrWhiteSpace(partName))
+            if (cols.Length > 0)
             {
                 parts.Add(new PartNodeFileDTO
                 {
-                    PartName = partName,
-                    PartNumber = string.IsNullOrWhiteSpace(partNumber) ? null : partNumber
+                    PartName = cols[0],
+                    PartNumber = cols.ElementAtOrDefault(1)
                 });
             }
 
             i++;
         }
 
-        return (parts, i);
+        return (parts, i - start);
     }
     
     private static (StepNodeFileDTO node, int nextIndex) ParseStep(string[] lines, int start)
@@ -226,8 +206,8 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
         var bodyLines = new List<string>();
         var detailLines = new List<string>();
 
-        int i = start + 1;
-        string section = "body";
+        var i = start + 1;
+        var section = "body";
 
         while (i < lines.Length)
         {
@@ -235,6 +215,9 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
             var line = raw.Trim();
 
             if (line.StartsWith("## "))
+                break;
+            
+            if (line.StartsWith("<!-- MESS:PARTS"))
                 break;
 
             if (line.Equals("### Details", StringComparison.OrdinalIgnoreCase))
@@ -276,7 +259,7 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
             ? string.Join("\n", detailLines).Trim()
             : null;
 
-        return (step, i);
+        return (step, i - start);
     }
     
     private static bool IsImage(string line)

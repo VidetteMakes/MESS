@@ -69,6 +69,79 @@ public class WorkInstructionMarkdownServiceTests
         Assert.IsType<StepNodeFileDTO>(result.Nodes[2]);
         Assert.IsType<PartNodeFileDTO>(result.Nodes[3]);
     }
+    
+    [Fact]
+    public void Serialize_Should_Preserve_Node_Order_With_Parts_And_Steps_Debug()
+    {
+        var dto = new WorkInstructionFileDTO
+        {
+            Title = "Order Test",
+            Nodes =
+            {
+                new StepNodeFileDTO { Name = "Step 1" },
+                new PartNodeFileDTO { PartName = "Part A" },
+                new StepNodeFileDTO { Name = "Step 2" },
+                new PartNodeFileDTO { PartName = "Part B" }
+            }
+        };
+
+        // ----------------------------
+        // SERIALIZE
+        // ----------------------------
+        var markdown = _service.Serialize(dto);
+
+        System.Diagnostics.Debug.WriteLine("===== SERIALIZED MARKDOWN =====");
+        System.Diagnostics.Debug.WriteLine(markdown);
+        System.Diagnostics.Debug.WriteLine("================================");
+
+        // ----------------------------
+        // PARSE
+        // ----------------------------
+        var result = _service.Parse(markdown);
+
+        System.Diagnostics.Debug.WriteLine("===== PARSED NODES =====");
+
+        for (int i = 0; i < result.Nodes.Count; i++)
+        {
+            var node = result.Nodes[i];
+
+            System.Diagnostics.Debug.WriteLine($"[{i}] {node.GetType().Name}");
+
+            if (node is StepNodeFileDTO step)
+                System.Diagnostics.Debug.WriteLine($"     Step: {step.Name}");
+
+            if (node is PartNodeFileDTO part)
+                System.Diagnostics.Debug.WriteLine($"     Part: {part.PartName} / {part.PartNumber}");
+        }
+
+        System.Diagnostics.Debug.WriteLine("========================");
+
+        // ----------------------------
+        // SUMMARY DEBUG INFO
+        // ----------------------------
+        System.Diagnostics.Debug.WriteLine($"Expected total nodes: {dto.Nodes.Count}");
+        System.Diagnostics.Debug.WriteLine($"Actual parsed nodes:  {result.Nodes.Count}");
+
+        System.Diagnostics.Debug.WriteLine("Original node types:");
+        System.Diagnostics.Debug.WriteLine(
+            string.Join(", ", dto.Nodes.Select(n => n.GetType().Name))
+        );
+
+        System.Diagnostics.Debug.WriteLine("Parsed node types:");
+        System.Diagnostics.Debug.WriteLine(
+            string.Join(", ", result.Nodes.Select(n => n.GetType().Name))
+        );
+
+        // ----------------------------
+        // ASSERTIONS (still valid, but now you can SEE failures)
+        // ----------------------------
+        Assert.Equal(4, result.Nodes.Count);
+
+        Assert.IsType<StepNodeFileDTO>(result.Nodes[0]);
+        Assert.IsType<PartNodeFileDTO>(result.Nodes[1]);
+        Assert.IsType<StepNodeFileDTO>(result.Nodes[2]);
+        Assert.IsType<PartNodeFileDTO>(result.Nodes[3]);
+    }
 
     // ----------------------------
     // SERIALIZE BASIC STRUCTURE

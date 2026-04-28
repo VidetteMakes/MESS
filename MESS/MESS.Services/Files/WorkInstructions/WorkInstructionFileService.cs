@@ -857,13 +857,19 @@ public partial class WorkInstructionFileService : IWorkInstructionFileService
     
     private static PartInputType ResolveInputType(string? input)
     {
-        if (!string.IsNullOrWhiteSpace(input) &&
-            Enum.TryParse<PartInputType>(input, true, out var parsed))
-        {
-            return parsed;
-        }
+        if (string.IsNullOrWhiteSpace(input))
+            return PartInputType.SerialNumber;
 
-        return PartInputType.SerialNumber;
+        if (Enum.TryParse<PartInputType>(input, true, out var parsed))
+            return parsed;
+
+        // UI / spreadsheet aliases (enum names SerialNumber / Tag remain supported for existing files).
+        return input.Trim().ToLowerInvariant() switch
+        {
+            "external id" or "externalid" => PartInputType.SerialNumber,
+            "internal tag" or "internaltag" => PartInputType.Tag,
+            _ => PartInputType.SerialNumber
+        };
     }
     
     /// <summary>

@@ -8,8 +8,21 @@
 <MudTd DataLabel="Number">
     <InputText id="number" @bind-Value="PartDefinition.Number" class="form-control" placeholder="Enter part number (optional)" @oninput="OnInputChanged"/>
 </MudTd>
-<MudTd DataLabel="Serial Number Unique">
-    <InputCheckbox @bind-Value="PartDefinition.IsSerialNumberUnique" class="form-check-input" @onchange="OnInputChanged"/>
+<MudTd DataLabel="Traceability type">
+    <select class="form-select form-select-sm"
+            value="@((int)PartDefinition.InputType)"
+            @onchange="OnTraceabilityTypeChanged">
+        <option value="@((int)PartInputType.SerialNumber)">External ID</option>
+        <option value="@((int)PartInputType.Tag)">Internal tag</option>
+    </select>
+</MudTd>
+<MudTd DataLabel="ID type">
+    <select class="form-select form-select-sm"
+            value="@(PartDefinition.IsSerialNumberUnique ? "unique" : "batch")"
+            @onchange="OnIdTypeChanged">
+        <option value="unique">Unique Serial Number</option>
+        <option value="batch">Non-unique Batch/Lot</option>
+    </select>
 </MudTd>
 <MudTd DataLabel="Actions">
     @if (!IsNewPart)
@@ -61,6 +74,30 @@
     private void OnInputChanged(ChangeEventArgs e)
     {
         IsDirty = true;
+    }
+
+    private void OnTraceabilityTypeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v) && Enum.IsDefined(typeof(PartInputType), v))
+        {
+            PartDefinition.InputType = (PartInputType)v;
+            IsDirty = true;
+        }
+    }
+
+    private void OnIdTypeChanged(ChangeEventArgs e)
+    {
+        var v = e.Value?.ToString();
+        if (v == "unique")
+        {
+            PartDefinition.IsSerialNumberUnique = true;
+            IsDirty = true;
+        }
+        else if (v == "batch")
+        {
+            PartDefinition.IsSerialNumberUnique = false;
+            IsDirty = true;
+        }
     }
 
     private async Task HandleSubmit()

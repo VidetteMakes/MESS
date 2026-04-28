@@ -1,7 +1,7 @@
 @using MESS.Data.Models
 @using MESS.Services.CRUD.SerializableParts
 @using MESS.Services.UI.PartTraceability
-@inject IPartTraceabilityStateService PartTraceabilityService
+@inject IPartTraceabilityFormService PartTraceabilityService
 @inject ISerializablePartService SerializablePartService
 
 <div class="card mb-1" style="min-width: 150px;">
@@ -12,7 +12,7 @@
             <small class="text-muted">@PartNode.PartDefinition!.Number</small>
         </div>
         <span class="text-muted" style="font-size: 1.2rem;">
-            @if (PartNode.InputType == PartInputType.Tag)
+            @if (PartNode.PartDefinition!.InputType == PartInputType.Tag)
             {
                 <i class="bi bi-qr-code"></i>
             }
@@ -28,7 +28,7 @@
         <InputText
             id="@($"input-{PartNode.Id}")"
             class="@GetInputClass()"
-            placeholder="@($"Scan or enter {(PartNode.InputType == PartInputType.Tag ? "tag code" : "serial number")}")"
+            placeholder="@($"Scan or enter {(PartNode.PartDefinition!.InputType == PartInputType.Tag ? "tag code" : "serial number")}")"
             @bind-Value="BoundValue"
             @bind-Value:after="OnInputChanged" />
 
@@ -77,6 +77,26 @@
             _ => "text-muted"
         };
     }
+    
+    private void RefreshUI()
+    {
+        // Update local bound fields
+        var entry = PartTraceabilityService.TryGetEntry(LogIndex, PartNode.Id, out var e) ? e : null;
+
+        if (entry is not null)
+        {
+            _serialNumber = entry.SerialNumber;
+            _tagCode = entry.TagCode;
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+    
+    protected override void OnInitialized()
+    {
+        // Subscribe to changes
+        PartTraceabilityService.OnStateChanged += RefreshUI;
+    }
 
     protected override async void OnParametersSet()
     {
@@ -97,7 +117,7 @@
         _tagCode = entry.TagCode;
 
         // Trigger validation if needed
-        if (logChanged && PartNode.InputType == PartInputType.Tag && !string.IsNullOrWhiteSpace(_tagCode))
+        if (logChanged && PartNode.PartDefinition!.InputType == PartInputType.Tag && !string.IsNullOrWhiteSpace(_tagCode))
         {
             _ = ValidateTagAsync(_tagCode);
         }
@@ -122,7 +142,7 @@
 
         string? updatedValue;
 
-        switch (PartNode.InputType)
+        switch (PartNode.PartDefinition!.InputType)
         {
             case PartInputType.SerialNumber:
                 updatedValue = string.IsNullOrWhiteSpace(_serialNumber) ? null : _serialNumber;
@@ -185,7 +205,7 @@
     
     private string? BoundValue
     {
-        get => PartNode.InputType switch
+        get => PartNode.PartDefinition!.InputType switch
         {
             PartInputType.SerialNumber => _serialNumber,
             PartInputType.Tag => _tagCode,
@@ -193,7 +213,7 @@
         };
         set
         {
-            switch (PartNode.InputType)
+            switch (PartNode.PartDefinition!.InputType)
             {
                 case PartInputType.SerialNumber:
                     _serialNumber = value;
@@ -263,5 +283,10 @@
 
         _isSearching = false;
         StateHasChanged();
+    }
+    
+    public void Dispose()
+    {
+        PartTraceabilityService.OnStateChanged -= RefreshUI;
     }
 }

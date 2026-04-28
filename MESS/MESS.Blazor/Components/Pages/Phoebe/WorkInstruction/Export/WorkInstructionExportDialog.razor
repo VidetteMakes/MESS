@@ -44,7 +44,7 @@
 
             <button type="button"
                     class="btn btn-sm btn-outline-secondary"
-                    @onclick="CancelExport">
+                    @onclick="CancelExportAsync">
                 Cancel
             </button>
         </FluentDialogFooter>
@@ -93,9 +93,14 @@
         Visible = false;
         await VisibleChanged.InvokeAsync(Visible);
     }
-    
-    private void CancelExport()
+
+    /// <summary>
+    /// Stops an in-flight export (if any) and closes the dialog — Cancel must dismiss the popup,
+    /// not only cancel generation when a download is running.
+    /// </summary>
+    private async Task CancelExportAsync()
     {
         _exportButton?.CancelExport();
+        await Close();
     }
 }

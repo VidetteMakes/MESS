@@ -45,7 +45,7 @@ public static class PartNodeFormDTOMapper
             ClientId = clientId,
             Position = entity.Position,
             NodeType = entity.NodeType,
-            InputType = entity.InputType,
+            InputType = entity.PartDefinition.InputType,
             Name = entity.PartDefinition.Name,
             Number = entity.PartDefinition.Number,
             IsSerialNumberUnique = entity.PartDefinition.IsSerialNumberUnique,
@@ -105,12 +105,12 @@ public static class PartNodeFormDTOMapper
             Id = dto.Id,
             Position = dto.Position,
             NodeType = dto.NodeType,
-            InputType = dto.InputType,
 
             PartDefinition = new PartDefinition
             {
                 Name = dto.Name,
                 Number = dto.Number,
+                InputType = dto.InputType,
                 IsSerialNumberUnique = dto.IsSerialNumberUnique
             }
         };

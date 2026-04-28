@@ -115,6 +115,10 @@ public class ApplicationContext
         modelBuilder.Entity<PartDefinition>()
             .Property(p => p.IsSerialNumberUnique)
             .HasDefaultValue(true);
+
+        modelBuilder.Entity<PartDefinition>()
+            .Property(p => p.InputType)
+            .HasDefaultValue(PartInputType.SerialNumber);
         
         modelBuilder.Entity<Step>()
             .ToTable("Steps");

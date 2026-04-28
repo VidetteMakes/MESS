@@ -1,100 +1,239 @@
+@using MESS.Services.CRUD.PartTraceability
+@using MESS.Services.UI.LocalCacheManager
 @using MESS.Services.UI.PartTraceability
 @using MESS.Services.UI.ProductionLogEvent
+@using Serilog
 
 @inject IProductionLogEventService ProductionLogEventService
+@inject IPartTraceabilityReworkService PartTraceabilityReworkService
+@inject IPartTraceabilityFormService PartTraceabilityFormService
+@inject ILocalCacheManager LocalCacheManager
 
-@implements IDialogContentComponent
+<div class="modal fade show d-block" tabindex="-1" role="dialog" style="background-color: rgba(0,0,0,0.5);">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Scan Parts to Rework</h5>
+                <button type="button" class="btn-close" @onclick="CloseModal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                @if (!IsProcessing)
+                {
+                    <div class="d-flex flex-wrap gap-2 justify-content-around align-content-center">
+                        @for (var i = 0; i < BatchSize; i++)
+                        {
+                            var index = i;
+                            var inputId = $"tagCodeInput_{i}";
+                            <div class="flex-grow-1">
+                                <InputText id="@inputId"
+                                           class="@GetInputClass(index)"
+                                           placeholder="Scan Tag"
+                                           @bind-Value="TagCodes[index]"
+                                           @bind-Value:after="() => OnTagCodeChanged(index)" 
+                                           @onblur="() => ValidateTagCodeImmediately(index)" />
 
-<FluentDialogHeader ShowDismiss="false">
-    <h2>@Dialog.Instance.Parameters.Title</h2>
-    <FluentDivider />
-</FluentDialogHeader>
+                                <label for="@inputId" class="form-label subtle-label">#@(i + 1)</label>
 
-<FluentDialogBody>
-    @if (!IsProcessing)
-    {
-        <div class="d-flex flex-wrap gap-2 justify-content-around align-content-center">
-            @for (var i = 0; i < BatchSize; i++)
-            {
-                var index = i;
-                var inputId = $"logIdInput_{i}"; // Unique ID per input
-                
-                <div class="form-floating flex-grow-1">
-                    <InputNumber TValue="int?"
-                                 id="@inputId"
-                                 class="form-control tall-input text-lightweight"
-                                 placeholder="Scan Part"
-                                 @bind-value="ProductionLogIds[index]" />
-                    
-                    <label for="@inputId" class="form-label subtle-label">
-                        #@(i+1)
-                    </label>
-                </div>
-            }
+                                @if (_isSearching.ContainsKey(index) && _isSearching[index])
+                                {
+                                    <div class="form-text text-muted small mt-1">Searching...</div>
+                                }
+
+                                @if (_validationMessages.TryGetValue(index, out var msg) && !string.IsNullOrEmpty(msg))
+                                {
+                                    <div class="form-text text-danger small mt-1">@msg</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="text-center my-4">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <span class="ms-2">Processing...</span>
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" @onclick="ConfirmAsync" disabled="@IsProcessing">
+                    Load Parts
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal" disabled="@IsProcessing">
+                    Cancel
+                </button>
+            </div>
         </div>
-    }
-    else
-    {
-        <p class="h1">
-            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-            <span> Processing...</span>
-        </p>
-    }
-</FluentDialogBody>
-
-<FluentDialogFooter>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary me-2"
-            @onclick="ConfirmAsync"
-            disabled="@IsProcessing">
-        Load Parts
-    </button>
-
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary ms-2"
-            @onclick="CancelAsync"
-            disabled="@IsProcessing">
-        Cancel
-    </button>
-</FluentDialogFooter>
+    </div>
+</div>
 
 @code {
-    [CascadingParameter]
-    public FluentDialog Dialog { get; set; } = default!;
+    [Parameter] public int BatchSize { get; set; } = 1;
+    [Parameter] public EventCallback OnClose { get; set; }
 
-    private bool IsProcessing { get; set; } = false;
-
-    private int BatchSize => Math.Max(1, ProductionLogEventService.CurrentProductionLogs.Count); 
-    // fallback to 1 if no logs
-        
-    private List<int?> ProductionLogIds { get; set; } = [];
+    private bool IsProcessing { get; set; }
+    
+    private List<string> TagCodes { get; set; } = new();
+    
+    private readonly Dictionary<int, string?> _validationMessages = new();
+    private readonly Dictionary<int, bool> _isSearching = new();
+    private readonly Dictionary<int, CancellationTokenSource> _debounceCts = new();
 
     protected override void OnInitialized()
     {
-        // Initialize the input list based on batch size
-        ProductionLogIds = Enumerable.Repeat<int?>(null, BatchSize).ToList();
+        // Initialize with empty strings
+        TagCodes = Enumerable.Repeat(string.Empty, BatchSize).ToList();
     }
 
     private async Task ConfirmAsync()
     {
         IsProcessing = true;
-        
-        // Load previous production log IDs entered by the user
-        var ids = ProductionLogIds
-            .OfType<int>() // filters out nulls automatically
-            .ToList();
+        StateHasChanged(); // refresh spinner immediately
 
-        // Load installed parts into memory using the service
-        //TODO
-        //await PartTraceabilityService.LoadInstalledPartsIntoMemoryAsync(ids);
-        
-        IsProcessing = false;
+        try
+        {
+            var logs = ProductionLogEventService.CurrentProductionLogs.ToList();
+            if (logs.Count == 0)
+                return;
 
-        await Dialog.CloseAsync();
+            if (TagCodes.Count != logs.Count)
+                throw new InvalidOperationException("Number of tag code inputs must match the number of active logs.");
+
+            // Get the work instruction ID from the cache
+            var workInstructionId = await LocalCacheManager.GetActiveWorkInstructionIdAsync();
+            if (workInstructionId < 0)
+                throw new InvalidOperationException("No active work instruction found in cache.");
+
+            var snapshots = new List<PartTraceabilitySnapshot>();
+
+            for (var i = 0; i < logs.Count; i++)
+            {
+                var tagCode = TagCodes[i].Trim();
+
+                if (string.IsNullOrEmpty(tagCode))
+                    continue;
+
+                var result = await PartTraceabilityReworkService.BuildSnapshotsFromTagCodesAsync(
+                    [tagCode],
+                    workInstructionId); // use cached ID
+
+                snapshots.AddRange(result);
+            }
+
+            PartTraceabilityFormService.LoadSnapshots(snapshots);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Failed to load part snapshots from tag codes.");
+            throw;
+        }
+        finally
+        {
+            IsProcessing = false;
+            StateHasChanged(); // update UI after processing
+        }
+
+        await CloseModal();
+    }
+    
+    private async Task OnTagCodeChanged(int index)
+    {
+        if (_debounceCts.TryGetValue(index, out var existingCts))
+        {
+            try
+            {
+                await existingCts.CancelAsync();
+            }
+            catch (ObjectDisposedException) { }
+        }
+
+        var newCts = new CancellationTokenSource();
+        _debounceCts[index] = newCts;
+        var token = newCts.Token;
+
+        try
+        {
+            await Task.Delay(300, token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (!token.IsCancellationRequested)
+        {
+            await ValidateTagCode(index);
+        }
     }
 
-    private async Task CancelAsync()
+    private async Task ValidateTagCodeImmediately(int index)
     {
-        await Dialog.CancelAsync();
+        if (_debounceCts.TryGetValue(index, out var cts))
+        {
+            try
+            {
+                await cts.CancelAsync();
+            }
+            catch (ObjectDisposedException) { }
+        }
+
+        await ValidateTagCode(index);
+    }
+
+    private async Task ValidateTagCode(int index)
+    {
+        var tagCode = TagCodes[index].Trim();
+        if (string.IsNullOrEmpty(tagCode))
+        {
+            _validationMessages[index] = null;
+            _isSearching[index] = false;
+            StateHasChanged();
+            return;
+        }
+
+        _isSearching[index] = true;
+        StateHasChanged(); // show spinner immediately
+
+        var workInstructionId = await LocalCacheManager.GetActiveWorkInstructionIdAsync();
+        var (_, errorMessage) = await PartTraceabilityReworkService.ValidateProducedPartAsync(tagCode, workInstructionId);
+
+        _validationMessages[index] = errorMessage;
+        _isSearching[index] = false;
+        StateHasChanged();
+    }
+
+    private string GetInputClass(int index)
+    {
+        var baseClass = "form-control tall-input text-lightweight";
+        if (_validationMessages.TryGetValue(index, out var msg))
+        {
+            if (!string.IsNullOrWhiteSpace(msg))
+                return $"{baseClass} is-invalid";
+        }
+        return baseClass;
+    }
+    
+    private async Task CloseModal()
+    {
+        if (OnClose.HasDelegate)
+            await OnClose.InvokeAsync();
+    }
+    
+    public void Dispose()
+    {
+        foreach (var cts in _debounceCts.Values)
+        {
+            try
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            catch
+            {
+                // swallow — safe cleanup
+            }
+        }
+
+        _debounceCts.Clear();
     }
 }

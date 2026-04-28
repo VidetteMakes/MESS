@@ -3,7 +3,6 @@
 @using MESS.Services.CRUD.Products
 @using MESS.Services.CRUD.ProductionLogs
 @using MESS.Services.CRUD.WorkInstructions
-@using MESS.Services.CRUD.ProductionLogParts
 @using MESS.Services.UI.SessionManager
 @using MESS.Services.UI.LocalCacheManager
 @using MESS.Services.UI.PartTraceability
@@ -20,11 +19,10 @@
 @inject ILocalCacheManager LocalCacheManager
 @inject ISessionManager SessionManager
 @inject AuthenticationStateProvider AuthProvider
-@inject IProductionLogPartService ProductionLogPartService
 @inject IJSRuntime JSRuntime
 @inject IToastService ToastService
 @inject IQrCodeService QrPrinter
-@inject IPartTraceabilityStateService PartTraceabilityService
+@inject IPartTraceabilityFormService PartTraceabilityService
 @inject IPartTraceabilityPersistenceService PartTraceabilityPersistenceService
 @implements IAsyncDisposable
 @attribute [StreamRendering(false)]

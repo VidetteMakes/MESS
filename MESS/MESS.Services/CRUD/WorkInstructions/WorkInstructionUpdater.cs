@@ -167,10 +167,7 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         WorkInstruction entity,
         ApplicationContext context)
     {
-        entity.PartProduced = await _partDefinitionResolver.ResolveAsync(
-            context,
-            dto.ProducedPartName,
-            null);
+        entity.PartProduced = await _partDefinitionResolver.ResolveAsync(context, dto.ProducedPartName, null);
     }
     
     private async Task ApplyToExistingAsync(
@@ -233,13 +230,7 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         PartNode entity,
         ApplicationContext context)
     {
-        entity.InputType = dto.InputType;
-
-        var part = await _partDefinitionResolver.ResolveAsync(
-                       context,
-                       dto.Name,
-                       dto.Number,
-                       dto.IsSerialNumberUnique)
+        var part = await _partDefinitionResolver.ResolveAsync(context, dto.Name, dto.Number)
                    ?? throw new InvalidOperationException(
                        $"Failed to resolve PartDefinition '{dto.Name}' '{dto.Number}'.");
 
@@ -251,11 +242,7 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         PartNodeFormDTO dto,
         ApplicationContext context)
     {
-        var part = await _partDefinitionResolver.ResolveAsync(
-                       context,
-                       dto.Name,
-                       dto.Number,
-                       dto.IsSerialNumberUnique)
+        var part = await _partDefinitionResolver.ResolveAsync(context, dto.Name, dto.Number)
                    ?? throw new InvalidOperationException(
                        $"Failed to resolve PartDefinition '{dto.Name}' '{dto.Number}'.");
 
@@ -263,7 +250,6 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
         {
             NodeType = WorkInstructionNodeType.Part,
             Position = dto.Position,
-            InputType = dto.InputType,
             PartDefinitionId = part.Id,
             PartDefinition = part
         };

@@ -6,7 +6,7 @@
 <div class="d-flex align-items-start justify-content-between flex-wrap">
     <div class="row flex-grow-1 g-2">
         <div class="col-auto">
-            <div class="border rounded ps-2 py-2 h-100 d-flex align-items-center gap-2 shadow-sm">
+            <div class="border rounded ps-2 py-2 h-100 d-flex align-items-center gap-2 shadow-sm" style="padding-right: 0.5rem;">
 
                 <!-- Part Name -->
                 <div class="d-flex flex-column">
@@ -26,45 +26,6 @@
                            @bind="PartNode!.Number"
                            @bind:event="oninput"
                            @bind:after="NotifyChangedAsync" />
-                </div>
-
-                <!-- InputType Toggle -->
-                <div class="d-flex flex-column align-items-start ms-3 me-3">
-                    <label class="form-label mb-1">Input Type</label>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input toggle-switch"
-                               type="checkbox"
-                               role="switch"
-                               id="inputTypeSwitch_@PartNode!.ClientId"
-                               checked="@(PartNode.InputType == PartInputType.Tag)"
-                               @onclick="ToggleInputType" />
-
-                        <label class="form-check-label toggle-label"
-                               for="inputTypeSwitch_@PartNode.ClientId">
-                            @(PartNode.InputType == PartInputType.SerialNumber
-                                ? "Serial"
-                                : "Tag")
-                        </label>
-                    </div>
-                </div>
-                
-                <!-- Serial Number Uniqueness Toggle -->
-                <div class="d-flex flex-column align-items-start ms-3 me-3">
-                    <label class="form-label mb-1">Serial Uniqueness</label>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input toggle-switch"
-                               type="checkbox"
-                               role="switch"
-                               id="serialUniqueSwitch_@PartNode!.ClientId"
-                               checked="@(PartNode.IsSerialNumberUnique)"
-                               disabled="@(PartNode.InputType != PartInputType.SerialNumber)"
-                               @onclick="ToggleSerialUniqueness" />
-
-                        <label class="form-check-label toggle-label"
-                               for="serialUniqueSwitch_@PartNode.ClientId">
-                            @(PartNode.IsSerialNumberUnique ? "Unique" : "Non-Unique")
-                        </label>
-                    </div>
                 </div>
 
             </div>
@@ -99,27 +60,5 @@
     {
         if (OnChanged.HasDelegate)
             await OnChanged.InvokeAsync();
-    }
-
-    private async Task ToggleInputType()
-    {
-        if (PartNode is null)
-            return;
-
-        PartNode.InputType = PartNode.InputType == PartInputType.SerialNumber
-            ? PartInputType.Tag
-            : PartInputType.SerialNumber;
-
-        await NotifyChangedAsync();
-    }
-    
-    private async Task ToggleSerialUniqueness()
-    {
-        if (PartNode is null)
-            return;
-
-        PartNode.IsSerialNumberUnique = !PartNode.IsSerialNumberUnique;
-
-        await NotifyChangedAsync();
     }
 }

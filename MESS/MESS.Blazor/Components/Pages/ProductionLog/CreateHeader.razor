@@ -1,13 +1,12 @@
 @using MESS.Blazor.Components.Dialogs
 @using MESS.Data.Models
-@using DialogParameters = Microsoft.FluentUI.AspNetCore.Components.DialogParameters
 
 @inject NavigationManager NavigationManager
-@inject Microsoft.FluentUI.AspNetCore.Components.IDialogService DialogService
 
 <div class="d-flex justify-content-between gap-4 flex-sm-wrap header-container">
     <ProductSelect Products="@Products" OnProductSelected="@OnProductSelected"/>
-    <WorkInstructionSelect WorkInstructions="@WorkInstructions" OnWorkInstructionSelected="@OnWorkInstructionSelected" />
+    <WorkInstructionSelect WorkInstructions="@WorkInstructions" 
+                           OnWorkInstructionSelected="@OnWorkInstructionSelected" />
 
     <div class="d-flex align-items-center">
         <label for="batchSizeInput" class="form-label me-2 mb-0">Batch Size</label>
@@ -20,13 +19,12 @@
                @onchange="@(() => OnBatchSizeChanged.InvokeAsync(BatchSize))"
                min="1" />
     </div>
-    
-    <!--
-    <button class="btn btn-primary btn-sm me-4" @onclick="OpenReworkDialog">
+
+    <!-- Button to open the rework dialog, currently commented out until rework functionality is fully implemented in services.
+    <button class="btn btn-primary btn-sm me-4" @onclick="() => ShowReworkDialog = true">
         <i class="bi bi-wrench me-1"></i>Rework Parts
     </button>
     -->
-    
 </div>
 
 @if (!string.IsNullOrWhiteSpace(ActiveLineOperator))
@@ -47,6 +45,14 @@
 else
 {
     <LineOperatorSelect LineOperators="@LineOperators" OnLineOperatorSelected="@OnLineOperatorSelected"/>
+}
+
+<!-- Bootstrap Modal Dialog -->
+@if (ShowReworkDialog)
+{
+    <PartReworkDialog
+        BatchSize="@BatchSize"
+        OnClose="() => ShowReworkDialog = false" />
 }
 
 @code {
@@ -104,18 +110,10 @@ else
     [Parameter]
     public EventCallback<int> OnBatchSizeChanged { get; set; }
     
+    private bool ShowReworkDialog { get; set; }
+    
     private void NavigateToLogs()
     {
         NavigationManager.NavigateTo("/production-logs");
-    }
-    
-    private async Task OpenReworkDialog()
-    {
-        await DialogService.ShowDialogAsync<PartReworkDialog>(new DialogParameters()
-        {
-            Title = "Scan Parts to Rework",
-            Width = "60%",
-            PreventScroll = true,
-        });
     }
 }

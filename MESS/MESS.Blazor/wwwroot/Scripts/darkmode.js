@@ -137,12 +137,101 @@ function applyDarkModeToFluentMenus(isDark) {
     });
 }
 
+/**
+ * Rich-text body content (e.g. Quill output) may embed inline "color" styles
+ * authored while in light mode. Those inline colors defeat CSS inheritance and
+ * leave text unreadable after toggling themes (e.g. near-black text on a dark
+ * background). This helper walks such content and remaps only the colors that
+ * would be unreadable on the active theme, while preserving the original color
+ * (stashed in data-mess-original-color) so toggling back restores the author's
+ * intent (red/green accents, etc.).
+ */
+const RICH_TEXT_ORIGINAL_COLOR_ATTR = 'messOriginalColor';
+
+function parseColorToRgb(colorStr) {
+    if (!colorStr) return null;
+    const trimmed = colorStr.trim().toLowerCase();
+    if (trimmed === '' || trimmed === 'inherit' || trimmed === 'initial' ||
+        trimmed === 'unset' || trimmed === 'currentcolor' || trimmed === 'transparent') {
+        return null;
+    }
+
+    const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/);
+    if (rgbMatch) {
+        return [parseFloat(rgbMatch[1]), parseFloat(rgbMatch[2]), parseFloat(rgbMatch[3])];
+    }
+
+    const hexMatch = trimmed.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/);
+    if (hexMatch) {
+        let hex = hexMatch[1];
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        return [
+            parseInt(hex.substring(0, 2), 16),
+            parseInt(hex.substring(2, 4), 16),
+            parseInt(hex.substring(4, 6), 16)
+        ];
+    }
+
+    const named = { black: [0, 0, 0], white: [255, 255, 255], silver: [192, 192, 192],
+                    gray: [128, 128, 128], grey: [128, 128, 128] };
+    return named[trimmed] || null;
+}
+
+function relativeLuminance(rgb) {
+    const channels = rgb.map(v => {
+        const c = Math.max(0, Math.min(255, v)) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function adjustRichTextColorsForTheme(isDark) {
+    // Any container whose content comes from a rich-text editor. Add new classes
+    // here if other pages render Quill/HTML content into the DOM.
+    const containers = document.querySelectorAll('.rich-text-content, .ql-editor');
+    if (!containers.length) return;
+
+    containers.forEach(container => {
+        const candidates = container.querySelectorAll('[style*="color"]');
+        candidates.forEach(el => {
+            if (!(RICH_TEXT_ORIGINAL_COLOR_ATTR in el.dataset)) {
+                el.dataset[RICH_TEXT_ORIGINAL_COLOR_ATTR] = el.style.color || '';
+            }
+
+            const originalColor = el.dataset[RICH_TEXT_ORIGINAL_COLOR_ATTR];
+            const rgb = parseColorToRgb(originalColor);
+
+            if (!rgb) {
+                // Nothing useful to parse (inherit/unset/etc.) — leave as-is.
+                return;
+            }
+
+            const lum = relativeLuminance(rgb);
+            const chroma = Math.max(...rgb) - Math.min(...rgb);
+            const isNearGrayscale = chroma < 32;
+
+            // Poor-contrast thresholds chosen to match our theme backgrounds
+            // (~#1a1a1a dark, ~#ffffff light). We only rewrite near-grayscale
+            // colors that would be unreadable, so semantic accents (red/green/
+            // blue status text authored in rich text) survive the theme flip.
+            if (isDark && isNearGrayscale && lum < 0.35) {
+                el.style.color = '#ffffff';
+            } else if (!isDark && isNearGrayscale && lum > 0.75) {
+                el.style.color = '#000000';
+            } else {
+                el.style.color = originalColor;
+            }
+        });
+    });
+}
+
 function applyTheme(isDark) {
     document.body.classList.toggle("dark-mode", isDark);
     document.body.classList.toggle("light-mode", !isDark);
 
     applyDarkModeToFluentTextAreas(isDark);
     applyDarkModeToFluentMenus(isDark);
+    adjustRichTextColorsForTheme(isDark);
 
     if (isDark && typeof window.ApplyDarkModeFixToFailureTextAreas === "function") {
         window.ApplyDarkModeFixToFailureTextAreas();
@@ -185,13 +274,12 @@ window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", e =
 
 // Only re-apply styling on DOM changes (not full theme switching)
 const observer = new MutationObserver(() => {
-    if (document.body.classList.contains("dark-mode")) {
-        applyDarkModeToFluentTextAreas(true);
-        applyDarkModeToFluentMenus(true);
-    } else {
-        applyDarkModeToFluentTextAreas(false);
-        applyDarkModeToFluentMenus(false);
-    }
+    const isDark = document.body.classList.contains("dark-mode");
+    applyDarkModeToFluentTextAreas(isDark);
+    applyDarkModeToFluentMenus(isDark);
+    // Blazor can render/re-render rich-text panels after the initial theme pass
+    // (e.g. navigating between work instruction steps); keep their colors in sync.
+    adjustRichTextColorsForTheme(isDark);
 });
 observer.observe(document.body, { childList: true, subtree: true });
 

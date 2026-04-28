@@ -123,9 +123,13 @@ body.dark-mode .login-dropdown .dropdown-item small.text-muted {
     color: #bbbbbb !important;
 }
 
-/* Dark mode selects */
+/* Dark mode selects
+   Bootstrap paints the dropdown chevron via --bs-form-select-bg-img (SVG stroke).
+   [data-bs-theme=dark] remaps it in bootstrap.css, but this app uses body.dark-mode
+   instead, so the default dark-grey chevron would stay. Force a white chevron. */
 body.dark-mode select,
 body.dark-mode .form-select {
+    --bs-form-select-bg-img: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
     background-color: #2c2c2c !important;
     color: #ffffff !important;
     border: 1px solid #888 !important;
@@ -625,6 +629,27 @@ body.dark-mode .production-log-grid .part-card * {
 }
 
 body.dark-mode span[style*="color: #000000"] {
+    color: #ffffff !important;
+}
+
+/* Bootstrap's .text-muted hard-codes a mid-grey (#6c757d / --bs-secondary-color)
+   that stays unreadable against our dark background. Force it to white in dark
+   mode; places that already have their own dark-mode styling for muted text
+   (login dropdown, phoebe list-group empty state) keep their more specific
+   selectors and win over this rule. */
+body.dark-mode .text-muted {
+    color: #ffffff !important;
+    --bs-secondary-color: #ffffff !important;
+}
+
+/* Same issue as .text-muted: .text-dark uses rgba(var(--bs-dark-rgb), 1) (near-black)
+   which stays invisible on dark UI unless we override when body.dark-mode is active. */
+body.dark-mode .text-dark {
+    color: #ffffff !important;
+}
+
+/* Help/hint text under inputs; Bootstrap sets color via var(--bs-secondary-color). */
+body.dark-mode .form-text {
     color: #ffffff !important;
 }
 

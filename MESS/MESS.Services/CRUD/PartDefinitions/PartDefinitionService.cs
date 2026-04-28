@@ -153,6 +153,8 @@ public class PartDefinitionService : IPartDefinitionService
 
             existing.Name = updated.Name;
             existing.Number = updated.Number;
+            existing.InputType = updated.InputType;
+            existing.IsSerialNumberUnique = updated.IsSerialNumberUnique;
 
             await context.SaveChangesAsync();
 

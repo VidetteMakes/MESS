@@ -104,10 +104,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
         // Register periodic database save handler
         ProductionLogEventService.DbSaveTriggered += SaveLogsToDatabaseHandler;
         
-        ProductSerialNumber = ProductionLogPartService.CurrentProductNumber;
-        
-        ProductionLogPartService.CurrentProductNumberChanged += HandleProductNumberChanged;
-        
         IsLoading = false;
     }
     
@@ -506,8 +502,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
     
     private void HandleProductNumberChanged()
     {
-        ProductSerialNumber = ProductionLogPartService.CurrentProductNumber;
-
         InvokeAsync(StateHasChanged);
     }
     
@@ -624,7 +618,6 @@ public partial class Create : ComponentBase, IAsyncDisposable
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        ProductionLogPartService.CurrentProductNumberChanged -= HandleProductNumberChanged;
         ProductionLogEventService.AutoSaveTriggered -= _autoSaveHandler;
         ProductionLogEventService.DbSaveTriggered -= SaveLogsToDatabaseHandler;
         await ProductionLogEventService.StopDbSaveTimerAsync();

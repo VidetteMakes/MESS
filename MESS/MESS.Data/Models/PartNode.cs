@@ -14,15 +14,10 @@ public class PartNode : WorkInstructionNode
     /// Gets or sets the part associated with this node.
     /// </summary>
     public PartDefinition? PartDefinition { get; set; }
-    
-    /// <summary>
-    /// Indicates what kind of input this part node expects (e.g., serial number or production log ID).
-    /// </summary>
-    public PartInputType InputType { get; set; } = PartInputType.SerialNumber;
 }
 
 /// <summary>
-/// Defines the type of input expected by a <see cref="PartNode"/>.
+/// Defines the type of input expected by a <see cref="PartNode"/> (stored on <see cref="PartDefinition"/>).
 /// </summary>
 /// <remarks>
 /// This enumeration determines how a user or system should provide

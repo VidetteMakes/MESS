@@ -13,9 +13,10 @@
             <div class="col col-md-6 col-sm-12 d-flex flex-column primary-content">
                 <div class="card">
                     <div class="card-body">
-                        <p class="card-text d-block mb-1" style="white-space: pre-wrap;">
+                        <p class="card-text rich-text-content d-block mb-1" style="white-space: pre-wrap;">
                             
                             @* Replace text with extra details i.e. body text *@
+                            @* The rich-text-content class lets darkmode.js re-map unreadable inline colors (e.g. hard-coded black) to the active theme. *@
                             @switch (_showDetails)
                             {
                                 case false:

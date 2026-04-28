@@ -1,6 +1,7 @@
 using MESS.Data.Context;
 using MESS.Data.Models;
 using MESS.Services.CRUD.PartDefinitions;
+using Microsoft.EntityFrameworkCore;
 
 namespace MESS.Services.CRUD.WorkInstructions;
 
@@ -42,15 +43,25 @@ public class PartNodeResolver : IPartNodeResolver
                           ?? throw new InvalidOperationException(
                               "PartNode has no pending PartDefinition.");
 
+            var inputType = pending.InputType;
+            var isSerialUnique = pending.IsSerialNumberUnique;
+
             var part = await _partDefinitionResolver.ResolveAsync(
                 context,
                 pending.Name,
-                pending.Number,
-                pending.IsSerialNumberUnique);
+                pending.Number);
 
             if (part == null)
                 throw new InvalidOperationException(
                     "PartNode has invalid part name.");
+
+            // When a brand-new PartDefinition row was added, apply traceability fields
+            // from the WI/import payload. Existing rows are owned by Part Definitions.
+            if (context.Entry(part).State == EntityState.Added)
+            {
+                part.InputType = inputType;
+                part.IsSerialNumberUnique = isSerialUnique;
+            }
 
             node.PartDefinitionId = part.Id;
             node.PartDefinition = part;

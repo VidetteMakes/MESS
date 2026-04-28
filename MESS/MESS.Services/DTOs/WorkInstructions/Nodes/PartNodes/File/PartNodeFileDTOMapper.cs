@@ -23,7 +23,7 @@ public static class PartNodeFileDTOMapper
             PartName = entity.PartDefinition.Name,
             PartNumber = entity.PartDefinition.Number,
             IsSerialNumberUnique = entity.PartDefinition.IsSerialNumberUnique,
-            InputType = entity.InputType
+            InputType = entity.PartDefinition.InputType
         };
     }
 
@@ -42,7 +42,6 @@ public static class PartNodeFileDTOMapper
             NodeType = WorkInstructionNodeType.Part,
             PartDefinition = resolvedPart,
             PartDefinitionId = resolvedPart.Id,
-            InputType = dto.InputType
         };
     }
     

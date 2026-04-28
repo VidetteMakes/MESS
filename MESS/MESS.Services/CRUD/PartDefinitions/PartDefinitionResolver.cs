@@ -11,8 +11,7 @@ public class PartDefinitionResolver : IPartDefinitionResolver
     public async Task<PartDefinition?> ResolveAsync(
         ApplicationContext context,
         string? name,
-        string? number,
-        bool isSerialNumberUnique = true)
+        string? number)
     {
         var normalizedName = name?.Trim();
         if (string.IsNullOrWhiteSpace(normalizedName))
@@ -24,7 +23,6 @@ public class PartDefinitionResolver : IPartDefinitionResolver
 
         var upperName = normalizedName.ToUpperInvariant();
 
-        // --- Step 1: Try to find existing by Name only ---
         var existing = context.PartDefinitions
                            .Local
                            .FirstOrDefault(p =>
@@ -35,29 +33,18 @@ public class PartDefinitionResolver : IPartDefinitionResolver
 
         if (existing != null)
         {
-            // --- Step 2: Check Serial Number uniqueness ---
-            if (existing.IsSerialNumberUnique != isSerialNumberUnique)
-            {
-                throw new InvalidOperationException(
-                    $"Part '{existing.Name}' already exists with IsSerialNumberUnique = {existing.IsSerialNumberUnique}, " +
-                    $"but attempted to use {isSerialNumberUnique}. This cannot be changed from the Work Instruction editor.");
-            }
-
-            // --- Step 3: Fill in missing Number if needed ---
             if (existing.Number == null && normalizedNumber != null)
-            {
                 existing.Number = normalizedNumber;
-            }
 
             return existing;
         }
 
-        // --- Step 4: Create new if not found ---
         var newPart = new PartDefinition
         {
             Name = normalizedName,
             Number = normalizedNumber,
-            IsSerialNumberUnique = isSerialNumberUnique
+            IsSerialNumberUnique = true,
+            InputType = PartInputType.SerialNumber
         };
 
         context.PartDefinitions.Add(newPart);

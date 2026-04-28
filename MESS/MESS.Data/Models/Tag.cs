@@ -11,7 +11,7 @@ public class Tag
     public int Id { get; set; }
 
     /// <summary>
-    /// Human readable tag code (QR or barcode value).
+    /// Human-readable tag code (QR or barcode value).
     /// Example: TAG-000123
     /// </summary>
     public string Code { get; set; } = null!;

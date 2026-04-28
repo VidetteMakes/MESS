@@ -1,7 +1,7 @@
 @using MESS.Data.Models
 @using MESS.Services.DTOs.ProductionLogs.Form
 @using MESS.Services.UI.PartTraceability
-@inject IPartTraceabilityStateService PartTraceabilityService
+@inject IPartTraceabilityFormService PartTraceabilityService
 
 @if (_initialized)
 {
@@ -81,7 +81,7 @@
         var (partNode, updatedValue) = input;
         var entry = PartTraceabilityService.GetEntry(_selectedLogIndex, partNode.Id);
 
-        switch (partNode.InputType)
+        switch (partNode.PartDefinition!.InputType)
         {
             case PartInputType.SerialNumber:
                 entry.SerialNumber = string.IsNullOrWhiteSpace(updatedValue as string) ? null : (string)updatedValue;

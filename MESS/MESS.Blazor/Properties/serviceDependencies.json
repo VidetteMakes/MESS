@@ -2,7 +2,7 @@
   "dependencies": {
     "postgresql1": {
       "type": "postgresql",
-      "connectionId": "ConnectionStrings:MESSConnection",
+      "connectionId": "ConnectionStrings:DatabaseConnection",
       "dynamicId": null
     }
   }

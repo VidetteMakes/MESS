@@ -19,6 +19,11 @@ public class PartDefinition
     /// Gets or sets the name of the part. This field is required.
     /// </summary>
     public required string Name { get; set; }
+
+    /// <summary>
+    /// Whether operators enter an external ID (serial) or scan an internal tag for this part during production.
+    /// </summary>
+    public PartInputType InputType { get; set; } = PartInputType.SerialNumber;
     
     /// <summary>
     /// Gets or sets a value indicating whether instances (serializable parts) of this part definition

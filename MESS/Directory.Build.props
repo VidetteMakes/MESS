@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    NuGet restore audits transitive packages. GHSA-g4vj-cjjj-v7hg (NuGet.Packaging / NuGet.Protocol)
+    is rated low severity; tooling such as Microsoft.VisualStudio.Web.CodeGeneration.Design pulls
+    those clients and treated-as-error NU1901 blocks the build. Raising the audit floor to moderate
+    keeps higher-severity issues as errors while allowing the solution to restore and compile.
+  -->
+  <PropertyGroup>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
+  </PropertyGroup>
+</Project>

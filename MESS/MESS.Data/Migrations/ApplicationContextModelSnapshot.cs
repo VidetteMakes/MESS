@@ -159,6 +159,11 @@ namespace MESS.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("InputType")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
                     b.Property<bool>("IsSerialNumberUnique")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -660,9 +665,6 @@ namespace MESS.Data.Migrations
             modelBuilder.Entity("MESS.Data.Models.PartNode", b =>
                 {
                     b.HasBaseType("MESS.Data.Models.WorkInstructionNode");
-
-                    b.Property<int>("InputType")
-                        .HasColumnType("integer");
 
                     b.Property<int>("PartDefinitionId")
                         .HasColumnType("integer");

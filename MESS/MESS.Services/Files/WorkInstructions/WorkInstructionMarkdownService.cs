@@ -41,7 +41,7 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
 
         var lines = yaml.Split('\n');
 
-        for (int i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i].Trim();
 
@@ -63,10 +63,10 @@ public class WorkInstructionMarkdownService : IWorkInstructionMarkdownService
             else if (line.StartsWith("associatedProducts:"))
             {
                 i++;
-                while (i < lines.Length && lines[i].Trim().StartsWith("-"))
+                while (i < lines.Length && lines[i].Trim().StartsWith('-'))
                 {
                     dto.AssociatedProductNames.Add(
-                        lines[i].Trim().Substring(1).Trim()
+                        lines[i].Trim()[1..].Trim()
                     );
                     i++;
                 }

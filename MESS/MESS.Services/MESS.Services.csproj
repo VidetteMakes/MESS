@@ -23,6 +23,7 @@
     <ItemGroup>
       <PackageReference Include="ClosedXML" Version="0.105.0" />
       <PackageReference Include="FluentValidation" Version="12.1.1" />
+      <PackageReference Include="LibGit2Sharp" Version="0.31.0" />
       <PackageReference Include="QRCoder" Version="1.8.0" />
 
       <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />

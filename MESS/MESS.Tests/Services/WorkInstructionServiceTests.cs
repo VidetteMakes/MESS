@@ -4,6 +4,7 @@ using MESS.Services.CRUD.PartDefinitions;
 using MESS.Services.CRUD.ProductionLogs;
 using MESS.Services.CRUD.Products;
 using MESS.Services.CRUD.WorkInstructions;
+using MESS.Services.Git;
 using MESS.Services.Media.WorkInstructions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -36,6 +37,7 @@ public class WorkInstructionServiceTests
         dbFactory.Setup(f => f.CreateDbContext())
             .Returns(() => new ApplicationContext(options)); // Create new instance on each call
         
+        var gitMock = new Mock<IWorkInstructionGitSyncService>();
         var logMock = new Mock<IProductionLogService>();
         var imageMock = new Mock<IWorkInstructionImageService>();
         var memoryCacheMock = new Mock<IMemoryCache>();
@@ -44,7 +46,7 @@ public class WorkInstructionServiceTests
         var partResolverMock = new Mock<IPartDefinitionResolver>();
         var productResolverMock = new Mock<IProductResolver>();
         
-        return new WorkInstructionService(logMock.Object, imageMock.Object, memoryCacheMock.Object, updaterMock.Object, 
+        return new WorkInstructionService(gitMock.Object, logMock.Object, imageMock.Object, memoryCacheMock.Object, updaterMock.Object, 
             productResolverMock.Object, nodeResolverMock.Object, partResolverMock.Object, dbFactory.Object);
     }
     
@@ -56,6 +58,7 @@ public class WorkInstructionServiceTests
         dbFactory.Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Test exception"));
     
+        var gitMock = new Mock<IWorkInstructionGitSyncService>();
         var logMock = new Mock<IProductionLogService>();
         var imageMock = new Mock<IWorkInstructionImageService>();
         var memoryCacheMock = new Mock<IMemoryCache>();
@@ -64,7 +67,7 @@ public class WorkInstructionServiceTests
         var partResolverMock = new Mock<IPartDefinitionResolver>();
         var productResolverMock = new Mock<IProductResolver>();
     
-        var service = new WorkInstructionService(logMock.Object, imageMock.Object, memoryCacheMock.Object, updaterMock.Object, 
+        var service = new WorkInstructionService(gitMock.Object, logMock.Object, imageMock.Object, memoryCacheMock.Object, updaterMock.Object, 
             productResolverMock.Object, nodeResolverMock.Object, partResolverMock.Object, dbFactory.Object);
 
         // Act
@@ -79,7 +82,7 @@ public class WorkInstructionServiceTests
     {
         // Arrange
         var service = MockWorkInstructionService();
-        var title = "Case Sensitive Test";
+        const string title = "Case Sensitive Test";
         var workInstruction = new WorkInstruction
         {
             Title = title,

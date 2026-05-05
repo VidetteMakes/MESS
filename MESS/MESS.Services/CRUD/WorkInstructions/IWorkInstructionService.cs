@@ -153,13 +153,6 @@ public interface IWorkInstructionService
     /// <param name="id">the id of the starting instruction</param>
     /// <returns></returns>
     public Task<bool> DeleteAllVersionsByIdAsync(int id);
-    
-    /// <summary>
-    /// Sets IsActive = false for all other versions in this version chain.
-    /// </summary>
-    /// <param name="workInstructionId"></param>
-    /// <returns></returns>
-    Task MarkOtherVersionsInactiveAsync(int workInstructionId);
 
     /// <summary>
     /// Deletes images and other media files associated with the specified <paramref name="nodes"/>.

@@ -5,9 +5,11 @@ using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using MESS.Services.CRUD.ProductionLogs;
 using MESS.Services.CRUD.Products;
+using MESS.Services.DTOs.WorkInstructions.File;
 using MESS.Services.DTOs.WorkInstructions.Form;
 using MESS.Services.DTOs.WorkInstructions.Summary;
 using MESS.Services.DTOs.WorkInstructions.Version;
+using MESS.Services.Git;
 using MESS.Services.Media.WorkInstructions;
 
 namespace MESS.Services.CRUD.WorkInstructions;
@@ -16,6 +18,7 @@ using Data.Models;
 /// <inheritdoc />
 public class WorkInstructionService : IWorkInstructionService
 {
+    private readonly IWorkInstructionGitSyncService _gitSyncService;
     private readonly IProductionLogService _productionLogService;
     private readonly IWorkInstructionImageService _imageService;
     private readonly IMemoryCache _cache;
@@ -33,6 +36,7 @@ public class WorkInstructionService : IWorkInstructionService
     /// <summary>
     /// Initializes a new instance of the <see cref="WorkInstructionService"/> class.
     /// </summary>
+    /// <param name="gitSyncService">The service called to manage Markdown work instructions from a Git repository.</param>
     /// <param name="productionLogService">The service for managing product-related operations.</param>
     /// <param name="imageService">The service for managing work instruction image-related operations.</param>
     /// <param name="cache">The memory cache for caching work instructions.</param>
@@ -42,6 +46,7 @@ public class WorkInstructionService : IWorkInstructionService
     /// <param name="partDefinitionResolver"> The service responsible for resolving part definitions.</param>
     /// <param name="contextFactory">The factory for creating database contexts.</param>
     public WorkInstructionService(
+        IWorkInstructionGitSyncService gitSyncService,
         IProductionLogService productionLogService, 
         IWorkInstructionImageService imageService, IMemoryCache cache, 
         IWorkInstructionUpdater workInstructionUpdater,
@@ -50,6 +55,7 @@ public class WorkInstructionService : IWorkInstructionService
         IPartDefinitionResolver partDefinitionResolver,
         IDbContextFactory<ApplicationContext> contextFactory)
     {
+        _gitSyncService = gitSyncService;
         _productionLogService = productionLogService;
         _cache = cache;
         _imageService = imageService;
@@ -211,9 +217,7 @@ public class WorkInstructionService : IWorkInstructionService
     /// <inheritdoc />
     public async Task<List<WorkInstructionSummaryDTO>> GetAllSummariesAsync()
     {
-        const string cacheKey = WORK_INSTRUCTION_SUMMARY_CACHE_KEY;
-        
-        if (_cache.TryGetValue(cacheKey, out List<WorkInstructionSummaryDTO>? cachedSummaries) &&
+        if (_cache.TryGetValue(WORK_INSTRUCTION_SUMMARY_CACHE_KEY, out List<WorkInstructionSummaryDTO>? cachedSummaries) &&
             cachedSummaries != null)
         {
             return cachedSummaries;
@@ -235,7 +239,7 @@ public class WorkInstructionService : IWorkInstructionService
                 .ToList();
 
             // Cache data for 15 minutes
-            _cache.Set(cacheKey, summaries, TimeSpan.FromMinutes(15));
+            _cache.Set(WORK_INSTRUCTION_SUMMARY_CACHE_KEY, summaries, TimeSpan.FromMinutes(15));
 
             Log.Information("GetAllSummariesAsync successfully retrieved {Count} WorkInstruction summaries", summaries.Count);
             return summaries;
@@ -451,28 +455,6 @@ public class WorkInstructionService : IWorkInstructionService
     }
     
     /// <inheritdoc />
-    public async Task MarkOtherVersionsInactiveAsync(int workInstructionId)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync();
-
-        var target = await context.WorkInstructions.FindAsync(workInstructionId);
-        if (target == null) return;
-
-        var rootId = target.OriginalId ?? target.Id;
-
-        var chain = await context.WorkInstructions
-            .Where(w => (w.Id == rootId || w.OriginalId == rootId) && w.Id != workInstructionId)
-            .ToListAsync();
-
-        foreach (var wi in chain)
-        {
-            wi.IsActive = false;
-        }
-
-        await context.SaveChangesAsync();
-    }
-    
-    /// <inheritdoc />
     public async Task<bool> CreateAsync(WorkInstructionFormDTO dto)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
@@ -506,6 +488,16 @@ public class WorkInstructionService : IWorkInstructionService
 
             await context.WorkInstructions.AddAsync(workInstruction);
             await context.SaveChangesAsync();
+            
+            // Git commit AFTER DB success
+            var dtoForGit = workInstruction.ToFileDTO();
+
+            var commitMessage = $"Create WorkInstruction: {workInstruction.Title}";
+
+            await _gitSyncService.CommitAsync(
+                dto: dtoForGit,
+                commitMessage: commitMessage,
+                originalTitle: null); // new file
 
             ClearWorkInstructionCaches();
 
@@ -553,7 +545,7 @@ public class WorkInstructionService : IWorkInstructionService
                 .Where(w => w.Id == rootId || w.OriginalId == rootId)
                 .ToListAsync();
 
-            if (!versions.Any())
+            if (versions.Count == 0)
                 throw new InvalidOperationException("No existing version chain found.");
 
             // Deactivate all existing versions
@@ -611,6 +603,18 @@ public class WorkInstructionService : IWorkInstructionService
                 "Created new WorkInstruction version {Id} for RootId {RootId}",
                 workInstruction.Id,
                 rootId);
+            try
+            {
+                // AFTER DB commit → write to Git
+                await _gitSyncService.CommitAsync(
+                        workInstruction.ToFileDTO(),
+                        $"New version {workInstruction.Version} created from UI",
+                        originalTitle: referenced.Title);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Git sync failed for WorkInstruction {Id}", workInstruction.Id);
+            }
 
             return workInstruction;
         });
@@ -847,6 +851,16 @@ public class WorkInstructionService : IWorkInstructionService
                 await context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                // Git commit AFTER DB success
+                var dtoForGit = existing.ToFileDTO();
+
+                var commitMessage = $"Update WorkInstruction: {existing.Title}";
+
+                await _gitSyncService.CommitAsync(
+                    dto: dtoForGit,
+                    commitMessage: commitMessage,
+                    originalTitle: existing.Title);
+
                 ClearWorkInstructionCaches();
 
                 Log.Information("Successfully updated WorkInstruction {Id}", existing.Id);
@@ -964,7 +978,7 @@ public class WorkInstructionService : IWorkInstructionService
     }
 
     /// <summary>
-    /// Increments a simple major.minor version label for new work instruction rows (matches editor logic).
+    /// Increments a simple `major.minor` version label for new work instruction rows (matches editor logic).
     /// </summary>
     private static string BumpWorkInstructionVersionString(string version)
     {

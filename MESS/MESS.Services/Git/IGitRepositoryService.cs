@@ -133,24 +133,21 @@ public interface IGitRepositoryService
         string newerCommitSha);
 
     /// <summary>
-    /// Moves or renames a file within the repository and commits the change.
+    /// Moves a file within the Git repository and stages the change so it will be included
+    /// in the next commit. This enables Git to detect the operation as a rename when committed.
     /// </summary>
-    /// <param name="repositoryPath">The root repository path.</param>
-    /// <param name="oldRelativePath">The current file path.</param>
-    /// <param name="newRelativePath">The new file path.</param>
-    /// <param name="commitMessage">The commit message describing the move.</param>
-    /// <param name="authorName">The name of the commit author.</param>
-    /// <param name="authorEmail">The email of the commit author.</param>
-    /// <returns>The SHA of the created commit.</returns>
-    /// <remarks>
-    /// This is useful when a work instruction changes its primary product and must be
-    /// moved to a different folder for organizational purposes.
-    /// </remarks>
-    Task<string> MoveFileAsync(
+    /// <param name="repositoryPath">The full path to the Git repository.</param>
+    /// <param name="oldRelativePath">The current relative path of the file within the repository.</param>
+    /// <param name="newRelativePath">The new relative path of the file within the repository.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if the specified repository path is not a valid Git repository.
+    /// </exception>
+    /// <exception cref="FileNotFoundException">
+    /// Thrown if the file at <paramref name="oldRelativePath"/> does not exist.
+    /// </exception>
+    Task MoveFileAsync(
         string repositoryPath,
         string oldRelativePath,
-        string newRelativePath,
-        string commitMessage,
-        string authorName,
-        string authorEmail);
+        string newRelativePath);
 }

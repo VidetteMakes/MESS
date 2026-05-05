@@ -357,32 +357,11 @@ public class GitRepositoryService : IGitRepositoryService
     }
 
     /// <inheritdoc />
-    public Task<string> MoveFileAsync(
+    public Task MoveFileAsync(
         string repositoryPath,
         string oldRelativePath,
-        string newRelativePath,
-        string commitMessage,
-        string authorName,
-        string authorEmail)
+        string newRelativePath)
     {
-        if (string.IsNullOrWhiteSpace(repositoryPath))
-            throw new ArgumentException("Repository path cannot be null or empty.", nameof(repositoryPath));
-
-        if (string.IsNullOrWhiteSpace(oldRelativePath))
-            throw new ArgumentException("Old relative path cannot be null or empty.", nameof(oldRelativePath));
-
-        if (string.IsNullOrWhiteSpace(newRelativePath))
-            throw new ArgumentException("New relative path cannot be null or empty.", nameof(newRelativePath));
-
-        if (string.IsNullOrWhiteSpace(commitMessage))
-            throw new ArgumentException("Commit message cannot be null or empty.", nameof(commitMessage));
-
-        if (string.IsNullOrWhiteSpace(authorName))
-            throw new ArgumentException("Author name cannot be null or empty.", nameof(authorName));
-
-        if (string.IsNullOrWhiteSpace(authorEmail))
-            throw new ArgumentException("Author email cannot be null or empty.", nameof(authorEmail));
-
         repositoryPath = Path.GetFullPath(repositoryPath);
 
         oldRelativePath = oldRelativePath.Replace('\\', '/');
@@ -396,32 +375,23 @@ public class GitRepositoryService : IGitRepositoryService
         var oldFullPath = Path.Combine(repositoryPath, oldRelativePath);
         var newFullPath = Path.Combine(repositoryPath, newRelativePath);
 
-        // Ensure destination folder exists
+        if (!File.Exists(oldFullPath))
+            throw new FileNotFoundException($"File not found at '{oldRelativePath}'.");
+
+        // Ensure destination directory exists
         var newDirectory = Path.GetDirectoryName(newFullPath);
         if (!string.IsNullOrEmpty(newDirectory) && !Directory.Exists(newDirectory))
         {
             Directory.CreateDirectory(newDirectory);
         }
 
-        // If file doesn't exist, nothing to move
-        if (!File.Exists(oldFullPath))
-            throw new FileNotFoundException($"File not found at '{oldRelativePath}'.");
-
-        // Perform filesystem move (Git will detect rename via staging)
+        // Move file
         File.Move(oldFullPath, newFullPath, overwrite: true);
 
-        // Stage both paths so Git can detect rename properly
+        // Stage BOTH paths
         Commands.Stage(repo, oldRelativePath);
         Commands.Stage(repo, newRelativePath);
 
-        var signature = new Signature(
-            authorName,
-            authorEmail,
-            DateTimeOffset.UtcNow
-        );
-
-        var commit = repo.Commit(commitMessage, signature, signature);
-
-        return Task.FromResult(commit.Sha);
+        return Task.CompletedTask;
     }
 }

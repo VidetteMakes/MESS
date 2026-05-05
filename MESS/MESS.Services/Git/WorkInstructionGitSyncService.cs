@@ -7,7 +7,12 @@ namespace MESS.Services.Git;
 /// <inheritdoc />
 public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
 {
-    private const string REPOSITORY_FOLDER_NAME = "mess-git-repo";
+    private static class RepoPaths
+    {
+        public const string RootFolder = "mess-git-repo";
+        public const string WorkInstructionsFolder = "work-instructions";
+    }
+
     private readonly string _repositoryPath;
     
     private readonly IGitRepositoryService _gitRepository;
@@ -28,13 +33,14 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         _gitRepository = gitRepository;
         _markdownService = markdownService;
         _currentUserService = currentUserService;
-        _repositoryPath = Path.Combine(AppContext.BaseDirectory, REPOSITORY_FOLDER_NAME);
+        _repositoryPath = Path.Combine(AppContext.BaseDirectory, RepoPaths.RootFolder);
     }
     
     /// <inheritdoc />
     public async Task<string> CommitAsync(
         WorkInstructionFileDTO dto,
-        string commitMessage)
+        string commitMessage,
+        string? originalTitle = null)
     {
         ArgumentNullException.ThrowIfNull(dto);
 
@@ -47,17 +53,44 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         // 1. Serialize DTO → Markdown
         var markdown = _markdownService.Serialize(dto);
 
-        // 2. Determine file path from TITLE ONLY (no product dependency)
-        var relativePath = ResolveFilePathFromTitle(dto.Title);
+        // 2. Resolve paths
+        var newPath = ResolveWorkInstructionGitPath(dto.Title);
 
-        // 3. Resolve current user for commit attribution
+        var oldPath = string.IsNullOrWhiteSpace(originalTitle)
+            ? newPath
+            : ResolveWorkInstructionGitPath(originalTitle);
+
+        var isRename = !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase);
+        
+        if (isRename)
+        {
+            var newFullPath = Path.Combine(_repositoryPath, newPath);
+            
+            if (File.Exists(newFullPath))
+                throw new InvalidOperationException("A work instruction with this title already exists.");
+        }
+
+        // 3. Resolve current user
         var authorName = _currentUserService.GetUserName();
         var authorEmail = _currentUserService.GetEmail();
 
-        // 4. Commit to Git
+        // 4. Ensure folder exists
+        var fullFolderPath = Path.Combine(_repositoryPath, RepoPaths.WorkInstructionsFolder);
+        Directory.CreateDirectory(fullFolderPath);
+
+        // 5. Handle rename FIRST (no commit yet)
+        if (isRename)
+        {
+            await _gitRepository.MoveFileAsync(
+                repositoryPath: _repositoryPath,
+                oldRelativePath: oldPath,
+                newRelativePath: newPath);
+        }
+
+        // 6. Commit (rename + content together)
         var commitSha = await _gitRepository.CommitFileAsync(
             repositoryPath: _repositoryPath,
-            relativeFilePath: relativePath,
+            relativeFilePath: newPath,
             content: markdown,
             commitMessage: commitMessage,
             authorName: authorName,
@@ -73,7 +106,7 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
             throw new ArgumentException("Title is required.", nameof(title));
 
         // 1. Resolve file path from title (same identity rule as all Git operations)
-        var relativePath = ResolveFilePathFromTitle(title);
+        var relativePath = ResolveWorkInstructionGitPath(title);
 
         // 2. Get latest file content from HEAD
         var markdown = await _gitRepository.GetFileAtHeadAsync(
@@ -99,7 +132,7 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
             throw new ArgumentException("Title is required.", nameof(title));
 
         // 1. Resolve file path using ONLY title (no product assumptions)
-        var relativePath = ResolveFilePathFromTitle(title);
+        var relativePath = ResolveWorkInstructionGitPath(title);
 
         // 2. Query Git history
         var history = await _gitRepository.GetFileHistoryAsync(
@@ -122,7 +155,7 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
             throw new ArgumentException("Commit SHA is required.", nameof(commitSha));
 
         // 1. Resolve file path from title (Git identity rule)
-        var relativePath = ResolveFilePathFromTitle(title);
+        var relativePath = ResolveWorkInstructionGitPath(title);
 
         // 2. Load file content at specific commit
         var markdown = await _gitRepository.GetFileAtCommitAsync(
@@ -139,22 +172,20 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
 
         return dto;
     }
-    
-    /// <summary>
-    /// Resolves file path using only WorkInstruction title.
-    /// This assumes title uniquely identifies a file within the repository.
-    /// </summary>
-    private static string ResolveFilePathFromTitle(string title)
-    {
-        var safeTitle = ToSafeFileName(title);
-
-        return $"{safeTitle}.md";
-    }
 
     private static string ToSafeFileName(string input)
     {
         input = Path.GetInvalidFileNameChars().Aggregate(input, (current, c) => current.Replace(c, '-'));
 
         return input.Trim();
+    }
+    
+    private static string ResolveWorkInstructionGitPath(string title)
+    {
+        var safeTitle = ToSafeFileName(title).Replace(" ", "_");
+
+        return Path.Combine(
+            RepoPaths.WorkInstructionsFolder,
+            $"{safeTitle.ToLowerInvariant()}.md");
     }
 }

@@ -31,28 +31,35 @@ namespace MESS.Services.Git;
 public interface IWorkInstructionGitSyncService
 {
     /// <summary>
-    /// Commits a WorkInstruction snapshot to the Git repository.
+    /// Commits a work instruction to the Git repository by serializing it to Markdown and writing it
+    /// to a file based on its title. If the title has changed, the existing file is moved so that the
+    /// rename and content update are captured in a single commit.
     /// </summary>
-    /// <param name="dto">
-    /// The WorkInstruction data to persist to Git.
+    /// <param name="dto">The work instruction to commit.</param>
+    /// <param name="commitMessage">The commit message describing the change.</param>
+    /// <param name="originalTitle">
+    /// The previous title of the work instruction. If provided and different from the current title,
+    /// the underlying file will be renamed accordingly.
     /// </param>
-    /// <param name="commitMessage">
-    /// The commit message describing the change.
-    /// </param>
-    /// <returns>
-    /// The SHA of the created Git commit.
-    /// </returns>
+    /// <returns>The SHA of the created commit.</returns>
+    /// <exception cref="ArgumentNullException">
+    /// Thrown if <paramref name="dto"/> is null.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown if the title or commit message is null or whitespace.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if a rename is attempted and a file with the new title already exists.
+    /// </exception>
     /// <remarks>
-    /// The file path is derived internally from:
-    /// - dto.Title (used for file naming)
-    /// - dto.AssociatedProductNames (used for folder structure)
-    /// 
-    /// The commit author is resolved automatically via ICurrentUserService,
-    /// ensuring consistent attribution without requiring caller-provided identity.
+    /// The file path is derived solely from the work instruction title. When a rename occurs,
+    /// the file move is staged prior to committing so that Git can properly track the rename.
+    /// This method performs both the rename (if applicable) and content update in a single commit.
     /// </remarks>
     Task<string> CommitAsync(
         WorkInstructionFileDTO dto,
-        string commitMessage);
+        string commitMessage,
+        string? originalTitle = null);
 
     /// <summary>
     /// Retrieves the latest version of a WorkInstruction from Git using its business identity.

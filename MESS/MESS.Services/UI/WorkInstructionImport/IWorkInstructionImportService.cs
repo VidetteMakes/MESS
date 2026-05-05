@@ -15,12 +15,6 @@ namespace MESS.Services.UI.WorkInstructionImport;
 /// into a <see cref="WorkInstructionFormDTO"/> suitable for display and editing
 /// within the application.
 ///
-/// Unlike earlier versions of the import pipeline, this service does not attempt
-/// to resolve database entities such as products or part definitions. It also
-/// does not perform validation against the database. All imported data is preserved
-/// exactly as it appears in the file so that users may review and modify it before
-/// saving.
-///
 /// Validation, entity resolution, and creation of missing parts or products are
 /// expected to occur later during the work instruction save process.
 ///

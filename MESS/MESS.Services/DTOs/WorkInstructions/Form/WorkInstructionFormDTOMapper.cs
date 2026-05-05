@@ -24,8 +24,7 @@ public static class WorkInstructionFormDTOMapper
     /// <returns>A <see cref="WorkInstructionFormDTO"/> representation of the entity.</returns>
     public static WorkInstructionFormDTO ToFormDTO(this WorkInstruction entity)
     {
-        if (entity is null)
-            throw new ArgumentNullException(nameof(entity));
+        ArgumentNullException.ThrowIfNull(entity);
 
         return new WorkInstructionFormDTO
         {
@@ -43,83 +42,81 @@ public static class WorkInstructionFormDTOMapper
         };
     }
 
-    /// <summary>
-    /// Converts a <see cref="WorkInstructionFormDTO"/> into a <see cref="WorkInstruction"/> entity.
-    /// </summary>
     /// <param name="dto">The form DTO to convert.</param>
-    /// <returns>A <see cref="WorkInstruction"/> entity populated from the DTO.</returns>
-    public static WorkInstruction ToNewEntity(this WorkInstructionFormDTO dto)
+    extension(WorkInstructionFormDTO dto)
     {
-        if (dto is null)
-            throw new ArgumentNullException(nameof(dto));
-
-        return new WorkInstruction
+        /// <summary>
+        /// Converts a <see cref="WorkInstructionFormDTO"/> into a <see cref="WorkInstruction"/> entity.
+        /// </summary>
+        /// <returns>A <see cref="WorkInstruction"/> entity populated from the DTO.</returns>
+        public WorkInstruction ToNewEntity()
         {
-            Id = dto.Id ?? 0,
-            Title = dto.Title,
-            Version = dto.Version,
-            OriginalId = dto.OriginalId,
-            IsLatest = dto.IsLatest,
-            IsActive = dto.IsActive,
-            ShouldGenerateQrCode = dto.ShouldGenerateQrCode,
-            PartProducedIsSerialized = dto.PartProducedIsSerialized,
-            // PartProduced and Products are resolved separately.
-            Nodes = dto.Nodes.Select(n => n.ToNewEntity()).ToList()
-        };
-    }
-    
-    /// <summary>
-    /// Maps a <see cref="WorkInstructionFormDTO"/> to a <see cref="WorkInstructionSummaryDTO"/>.
-    /// </summary>
-    /// <param name="formDto">The form DTO representing the editable work instruction.</param>
-    /// <param name="allProducts">
-    /// A collection of <see cref="ProductSummaryDTO"/> used to populate the
-    /// <see cref="WorkInstructionSummaryDTO.Products"/> property.
-    /// Only products whose titles match <see cref="WorkInstructionFormDTO.ProductNames"/> will be included.
-    /// </param>
-    /// <returns>A <see cref="WorkInstructionSummaryDTO"/> containing the mapped summary data.</returns>
-    public static WorkInstructionSummaryDTO ToSummaryDTO(
-        this WorkInstructionFormDTO formDto,
-        IEnumerable<ProductSummaryDTO> allProducts)
-    {
-        ArgumentNullException.ThrowIfNull(formDto);
-        ArgumentNullException.ThrowIfNull(allProducts);
+            ArgumentNullException.ThrowIfNull(dto);
 
-        return new WorkInstructionSummaryDTO
-        {
-            Id = formDto.Id ?? 0,
-            Title = formDto.Title,
-            Version = formDto.Version,
-            OriginalId = formDto.OriginalId,
-            IsLatest = formDto.IsLatest,
-            IsActive = formDto.IsActive,
-            PartProducedName = formDto.ProducedPartName,
-            Products = allProducts
-                .Where(p => formDto.ProductNames.Contains(p.Name))
-                .ToList()
-        };
-    }
-    
-    /// <summary>
-    /// Converts a <see cref="WorkInstructionFormDTO"/> (editable form DTO)
-    /// to a <see cref="WorkInstructionFileDTO"/> for file export.
-    /// </summary>
-    /// <param name="formDto">The editable work instruction DTO.</param>
-    public static WorkInstructionFileDTO ToFileDTO(this WorkInstructionFormDTO formDto)
-    {
-        if (formDto == null) throw new ArgumentNullException(nameof(formDto));
+            return new WorkInstruction
+            {
+                Id = dto.Id ?? 0,
+                Title = dto.Title,
+                Version = dto.Version,
+                OriginalId = dto.OriginalId,
+                IsLatest = dto.IsLatest,
+                IsActive = dto.IsActive,
+                ShouldGenerateQrCode = dto.ShouldGenerateQrCode,
+                PartProducedIsSerialized = dto.PartProducedIsSerialized,
+                // PartProduced and Products are resolved separately.
+                Nodes = dto.Nodes.Select(n => n.ToNewEntity()).ToList()
+            };
+        }
 
-        return new WorkInstructionFileDTO
+        /// <summary>
+        /// Maps a <see cref="WorkInstructionFormDTO"/> to a <see cref="WorkInstructionSummaryDTO"/>.
+        /// </summary>
+        /// <param name="allProducts">
+        /// A collection of <see cref="ProductSummaryDTO"/> used to populate the
+        /// <see cref="WorkInstructionSummaryDTO.Products"/> property.
+        /// Only products whose titles match <see cref="WorkInstructionFormDTO.ProductNames"/> will be included.
+        /// </param>
+        /// <returns>A <see cref="WorkInstructionSummaryDTO"/> containing the mapped summary data.</returns>
+        public WorkInstructionSummaryDTO ToSummaryDTO(IEnumerable<ProductSummaryDTO> allProducts)
         {
-            Title = formDto.Title,
-            Version = formDto.Version,
-            ShouldGenerateQrCode = formDto.ShouldGenerateQrCode,
-            PartProducedIsSerialized = formDto.PartProducedIsSerialized,
-            ProducedPartName = formDto.ProducedPartName,
-            AssociatedProductNames = formDto.ProductNames.ToList(),
-            Nodes = formDto.Nodes
-                .Select(n => n.ToFileDTO())
-                .ToList()
-        };
+            ArgumentNullException.ThrowIfNull(dto);
+            ArgumentNullException.ThrowIfNull(allProducts);
+
+            return new WorkInstructionSummaryDTO
+            {
+                Id = dto.Id ?? 0,
+                Title = dto.Title,
+                Version = dto.Version,
+                OriginalId = dto.OriginalId,
+                IsLatest = dto.IsLatest,
+                IsActive = dto.IsActive,
+                PartProducedName = dto.ProducedPartName,
+                Products = allProducts
+                    .Where(p => dto.ProductNames.Contains(p.Name))
+                    .ToList()
+            };
+        }
+
+        /// <summary>
+        /// Converts a <see cref="WorkInstructionFormDTO"/> (editable form DTO)
+        /// to a <see cref="WorkInstructionFileDTO"/> for file export.
+        /// </summary>
+        public WorkInstructionFileDTO ToFileDTO()
+        {
+            ArgumentNullException.ThrowIfNull(dto);
+
+            return new WorkInstructionFileDTO
+            {
+                Title = dto.Title,
+                Version = dto.Version,
+                ShouldGenerateQrCode = dto.ShouldGenerateQrCode,
+                PartProducedIsSerialized = dto.PartProducedIsSerialized,
+                ProducedPartName = dto.ProducedPartName,
+                AssociatedProductNames = dto.ProductNames.ToList(),
+                Nodes = dto.Nodes
+                    .Select(n => n.ToFileDTO())
+                    .ToList()
+            };
+        }
     }
 }

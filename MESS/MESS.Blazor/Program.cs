@@ -80,6 +80,7 @@ builder.Services.AddScoped<IWorkInstructionEditorService, WorkInstructionEditorS
 builder.Services.AddScoped<IWorkInstructionFileService, WorkInstructionFileService>();
 builder.Services.AddScoped<IWorkInstructionImportService, WorkInstructionImportService>();
 builder.Services.AddScoped<IWorkInstructionImageService, WorkInstructionImageService>();
+builder.Services.AddScoped<IWorkInstructionMarkdownService, WorkInstructionMarkdownService>();
 builder.Services.AddScoped<IGitRepositoryService, GitRepositoryService>();
 builder.Services.AddScoped<IWorkInstructionGitSyncService, WorkInstructionGitSyncService>();
 builder.Services.AddScoped<RoleInitializer>();

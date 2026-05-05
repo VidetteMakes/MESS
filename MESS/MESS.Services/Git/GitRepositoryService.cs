@@ -73,6 +73,15 @@ public class GitRepositoryService : IGitRepositoryService
             return false;
         }
     }
+    
+    /// <inheritdoc />
+    public void EnsureRepositoryInitialized(string repositoryPath)
+    {
+        if (RepositoryExists(repositoryPath))
+            return;
+
+        InitializeRepository(repositoryPath);
+    }
 
     /// <inheritdoc />
     public Task<string> CommitFileAsync(

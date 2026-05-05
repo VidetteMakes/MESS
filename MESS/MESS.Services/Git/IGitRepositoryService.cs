@@ -30,6 +30,20 @@ public interface IGitRepositoryService
     /// <param name="repositoryPath">The path to check.</param>
     /// <returns>True if the path contains a valid Git repository; otherwise false.</returns>
     bool RepositoryExists(string repositoryPath);
+    
+    /// <summary>
+    /// Ensures that a Git repository exists at the specified path.
+    /// If the repository is not present or not valid, it will be initialized automatically.
+    /// </summary>
+    /// <param name="repositoryPath">
+    /// The absolute or relative file system path where the Git repository should exist.
+    /// </param>
+    /// <remarks>
+    /// This method is idempotent and safe to call multiple times. If a valid Git repository
+    /// already exists at the given location, no action is taken. Otherwise, a new repository
+    /// is created and initialized using the standard initialization process.
+    /// </remarks>
+    void EnsureRepositoryInitialized(string repositoryPath);
 
     /// <summary>
     /// Commits a file to the repository on the main branch.

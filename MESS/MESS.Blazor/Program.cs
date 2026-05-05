@@ -157,6 +157,13 @@ using (var scope = app.Services.CreateScope())
     
     // Seeds default data
     SeedWorkInstructions.Seed(scope.ServiceProvider);
+    
+    // Git Repository Setup
+    var git = scope.ServiceProvider.GetRequiredService<IGitRepositoryService>();
+
+    var repoPath = Path.Combine(AppContext.BaseDirectory, "mess-git-repo");
+
+    git.EnsureRepositoryInitialized(repoPath);
 }
 
 

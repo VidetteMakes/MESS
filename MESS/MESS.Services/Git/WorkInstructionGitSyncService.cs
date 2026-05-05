@@ -1,6 +1,7 @@
 using MESS.Services.CRUD.ApplicationUser;
 using MESS.Services.DTOs.WorkInstructions.File;
 using MESS.Services.Files.WorkInstructions;
+using Serilog;
 
 namespace MESS.Services.Git;
 
@@ -50,44 +51,49 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         if (string.IsNullOrWhiteSpace(commitMessage))
             throw new ArgumentException("Commit message is required.", nameof(commitMessage));
 
-        // 1. Serialize DTO → Markdown
+        Log.Information("Starting Git commit for WorkInstruction '{Title}'", dto.Title);
+
         var markdown = _markdownService.Serialize(dto);
 
-        // 2. Resolve paths
         var newPath = ResolveWorkInstructionGitPath(dto.Title);
-
         var oldPath = string.IsNullOrWhiteSpace(originalTitle)
             ? newPath
             : ResolveWorkInstructionGitPath(originalTitle);
 
         var isRename = !string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase);
-        
+
         if (isRename)
         {
+            Log.Information("Detected rename: '{OldTitle}' → '{NewTitle}'",
+                originalTitle, dto.Title);
+
             var newFullPath = Path.Combine(_repositoryPath, newPath);
-            
+
             if (File.Exists(newFullPath))
+            {
+                Log.Warning("Commit aborted: file already exists at '{Path}'", newFullPath);
                 throw new InvalidOperationException("A work instruction with this title already exists.");
+            }
         }
 
-        // 3. Resolve current user
         var authorName = _currentUserService.GetUserName();
         var authorEmail = _currentUserService.GetEmail();
 
-        // 4. Ensure folder exists
+        Log.Debug("Git author resolved as {Author} <{Email}>", authorName, authorEmail);
+
         var fullFolderPath = Path.Combine(_repositoryPath, RepoPaths.WorkInstructionsFolder);
         Directory.CreateDirectory(fullFolderPath);
 
-        // 5. Handle rename FIRST (no commit yet)
         if (isRename)
         {
+            Log.Information("Moving Git file '{OldPath}' → '{NewPath}'", oldPath, newPath);
+
             await _gitRepository.MoveFileAsync(
                 repositoryPath: _repositoryPath,
                 oldRelativePath: oldPath,
                 newRelativePath: newPath);
         }
 
-        // 6. Commit (rename + content together)
         var commitSha = await _gitRepository.CommitFileAsync(
             repositoryPath: _repositoryPath,
             relativeFilePath: newPath,
@@ -95,6 +101,9 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
             commitMessage: commitMessage,
             authorName: authorName,
             authorEmail: authorEmail);
+
+        Log.Information("Git commit successful for '{Title}' with SHA {Sha}",
+            dto.Title, commitSha);
 
         return commitSha;
     }
@@ -105,22 +114,23 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Title is required.", nameof(title));
 
-        // 1. Resolve file path from title (same identity rule as all Git operations)
+        Log.Debug("Fetching latest Git version for WorkInstruction '{Title}'", title);
+
         var relativePath = ResolveWorkInstructionGitPath(title);
 
-        // 2. Get latest file content from HEAD
         var markdown = await _gitRepository.GetFileAtHeadAsync(
             repositoryPath: _repositoryPath,
             relativeFilePath: relativePath);
 
-        // 3. If file doesn't exist in Git, return null
         if (markdown == null)
+        {
+            Log.Warning("No Git file found for WorkInstruction '{Title}'", title);
             return null;
+        }
 
-        // 4. Convert Markdown → DTO
-        var dto = _markdownService.Parse(markdown);
+        Log.Debug("Git file found for '{Title}', parsing markdown", title);
 
-        return dto;
+        return _markdownService.Parse(markdown);
     }
     
     /// <inheritdoc />
@@ -131,14 +141,17 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         if (string.IsNullOrWhiteSpace(title))
             throw new ArgumentException("Title is required.", nameof(title));
 
-        // 1. Resolve file path using ONLY title (no product assumptions)
+        Log.Information("Retrieving Git history for '{Title}' (Max: {Max})", title, maxCount);
+
         var relativePath = ResolveWorkInstructionGitPath(title);
 
-        // 2. Query Git history
         var history = await _gitRepository.GetFileHistoryAsync(
             repositoryPath: _repositoryPath,
             relativeFilePath: relativePath,
             maxCount: maxCount);
+
+        Log.Information("Retrieved {Count} commits for '{Title}'",
+            history.Count, title);
 
         return history;
     }
@@ -154,23 +167,25 @@ public class WorkInstructionGitSyncService : IWorkInstructionGitSyncService
         if (string.IsNullOrWhiteSpace(commitSha))
             throw new ArgumentException("Commit SHA is required.", nameof(commitSha));
 
-        // 1. Resolve file path from title (Git identity rule)
+        Log.Information("Fetching Git version '{Sha}' for WorkInstruction '{Title}'",
+            commitSha, title);
+
         var relativePath = ResolveWorkInstructionGitPath(title);
 
-        // 2. Load file content at specific commit
         var markdown = await _gitRepository.GetFileAtCommitAsync(
             repositoryPath: _repositoryPath,
             relativeFilePath: relativePath,
             commitSha: commitSha);
 
-        // 3. If file doesn't exist at that commit, return null
         if (markdown == null)
+        {
+            Log.Warning("No Git version found for '{Title}' at commit {Sha}",
+                title, commitSha);
+
             return null;
+        }
 
-        // 4. Convert Markdown → DTO
-        var dto = _markdownService.Parse(markdown);
-
-        return dto;
+        return _markdownService.Parse(markdown);
     }
 
     private static string ToSafeFileName(string input)

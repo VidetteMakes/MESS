@@ -83,6 +83,8 @@ public class ApplicationContext
     {
         base.OnModelCreating(modelBuilder);
         
+        SetAspNetCoreIdentityDatabaseNamesInSnakeCase(modelBuilder);
+        
         modelBuilder.Entity<Product>()
             .HasOne(p => p.PartDefinition)
             .WithOne() // One-to-one for now; can be changed to .WithMany() later.
@@ -97,7 +99,7 @@ public class ApplicationContext
             .UseTptMappingStrategy();
 
         modelBuilder.Entity<PartNode>()
-            .ToTable("PartNodes")
+            .ToTable("part_nodes")
             .HasOne(p => p.PartDefinition)
             .WithMany()
             .HasForeignKey(p => p.PartDefinitionId)
@@ -110,7 +112,7 @@ public class ApplicationContext
         modelBuilder.Entity<PartDefinition>()
             .HasIndex(p => p.Name)
             .IsUnique()
-            .HasFilter("\"Number\" IS NULL OR \"Number\" = ''");
+            .HasFilter("number IS NULL OR number = ''");
         
         modelBuilder.Entity<PartDefinition>()
             .Property(p => p.IsSerialNumberUnique)
@@ -121,12 +123,12 @@ public class ApplicationContext
             .HasDefaultValue(PartInputType.SerialNumber);
         
         modelBuilder.Entity<Step>()
-            .ToTable("Steps");
+            .ToTable("steps");
         
         modelBuilder.Entity<ProductionLog>()
             .HasOne(p => p.WorkInstruction)
             .WithMany()
-            .HasForeignKey("WorkInstructionId")
+            .HasForeignKey("work_instruction_id")
             .IsRequired(false);
         
         modelBuilder.Entity<ProductionLogPart>()
@@ -183,7 +185,32 @@ public class ApplicationContext
         modelBuilder.Entity<FailureNoun>()
             .HasMany(fn => fn.Adjectives)
             .WithMany(fa => fa.Nouns)
-            .UsingEntity(j => j.ToTable("FailureNounAdjectives"));
+            .UsingEntity(j => j.ToTable("failure_noun_adjectives"));
+    }
+    
+    private void SetAspNetCoreIdentityDatabaseNamesInSnakeCase(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ApplicationUser>().ToTable("asp_net_users");
+        modelBuilder.Entity<IdentityRole>().ToTable("asp_net_roles");
+        modelBuilder.Entity<IdentityUserRole<string>>().ToTable("asp_net_user_roles");
+        modelBuilder.Entity<IdentityUserClaim<string>>().ToTable("asp_net_user_claims");
+        modelBuilder.Entity<IdentityUserLogin<string>>().ToTable("asp_net_user_logins");
+        modelBuilder.Entity<IdentityRoleClaim<string>>().ToTable("asp_net_role_claims");
+        modelBuilder.Entity<IdentityUserToken<string>>().ToTable("asp_net_user_tokens");
+
+        modelBuilder.Entity<IdentityRole>()
+            .HasIndex(r => r.NormalizedName)
+            .HasDatabaseName("ix_asp_net_roles_normalized_name")
+            .IsUnique();
+
+        modelBuilder.Entity<ApplicationUser>()
+            .HasIndex(u => u.NormalizedUserName)
+            .HasDatabaseName("ix_asp_net_users_normalized_user_name")
+            .IsUnique();
+
+        modelBuilder.Entity<ApplicationUser>()
+            .HasIndex(u => u.NormalizedEmail)
+            .HasDatabaseName("ix_asp_net_users_normalized_email");
     }
     
     /// <inheritdoc />

@@ -6,7 +6,7 @@ Every Work Instruction Markdown file consists of:
 1. YAML Front Matter
 2. Optional H1 Title
 3. Sequential content:
-   - Part callouts (visible + comment)
+   - Part tables
    - Step sections (##)
 ```
 
@@ -81,28 +81,25 @@ audit:
 ---
 
 # 5. Part Nodes
-## 5.1 Required Format (Visible + Comment)
+## 5.1 Required Format
 
 ```md
-> 🔩 **Part Required: Housing (HS-100)**
->
-> Scan or verify before continuing.
+<!-- MESS:PART -->
 
-<!-- MESS:PART
-name: Housing
-number: HS-100
-inputType: SerialNumber
--->
+| Part Name       | Part Number |
+|-----------------|-------------|
+| Housing         | HS-100      |
+| Random Part 2.0 |             |
 
 ```
-:::part
-name: Housing
-number: HS-100
-inputType: SerialNumber
-:::
+Which looks like...
 
-term
-: definition
+<!-- MESS:PART -->
+
+| Part Name       | Part Number |
+|-----------------|-------------|
+| Housing         | HS-100      |
+| Random Part 2.0 |             |
 
 
 ---
@@ -111,8 +108,8 @@ term
 
 ### Must include:
 
-* A visible blockquote (`>`)
-* A `<!-- MESS:PART -->` comment block immediately after
+* A `<!-- MESS:PART -->` comment block
+* A table with the exact headers: `Part Name` and `Part Number`
 
 ---
 
@@ -120,23 +117,6 @@ term
 
 * A PartNode applies **at the exact location it appears**
 * It is part of the linear workflow
-
----
-
-### Supported Fields (inside comment)
-
-```yaml
-name: string (required)
-number: string (optional)
-inputType: enum (optional)
-```
-
----
-
-## 5.3 Parsing Rules
-
-* Only the `<!-- MESS:PART -->` block is parsed
-* The visible blockquote is ignored by the parser
 
 ---
 
@@ -295,11 +275,14 @@ The document is parsed top-to-bottom:
 
 ## Must Validate
 
-### 1. Every Part must have a comment block
+### 1. Every Part must have a comment block and table
 
 ```md
-> 🔩 Part...
 <!-- MESS:PART -->   required
+| Part Name       | Part Number |
+|-----------------|-------------|
+| Housing         | HS-100      |
+| Random Part 2.0 |             |
 ```
 
 ---
@@ -377,14 +360,11 @@ audit:
 
 # Bicycle Drivetrain
 
-> 🔩 **Part Required: Housing (HS-100)**
->
-> Scan before continuing.
-
-<!-- MESS:PART
-name: Housing
-number: HS-100
--->
+<!-- MESS:PART-->
+| Part Name       | Part Number |
+|-----------------|-------------|
+| Housing         | HS-100      |
+| Random Part 2.0 |             |
 
 ## Install Bottom Bracket
 

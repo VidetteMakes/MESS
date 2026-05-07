@@ -78,6 +78,11 @@ public class ApplicationContext
     /// </summary>
     public virtual DbSet<TagHistory> TagHistories { get; set; } = null!;
     
+    /// <summary>
+    /// DbSet for the Git Repository Configuration
+    /// </summary>
+    public virtual DbSet<GitConfiguration> GitConfiguration => Set<GitConfiguration>();
+    
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -184,6 +189,32 @@ public class ApplicationContext
             .HasMany(fn => fn.Adjectives)
             .WithMany(fa => fa.Nouns)
             .UsingEntity(j => j.ToTable("FailureNounAdjectives"));
+
+        modelBuilder.Entity<GitConfiguration>(entity =>
+        {
+            // enforce single row pattern
+            entity.Property(x => x.Id)
+                .ValueGeneratedNever();
+
+            entity.Property(x => x.RemoteUrl)
+                .IsRequired()
+                .HasMaxLength(1000);
+
+            entity.Property(x => x.Branch)
+                .IsRequired()
+                .HasMaxLength(200);
+
+            entity.Property(x => x.CredentialReference)
+                .HasMaxLength(500);
+
+            entity.Property(x => x.UpdatedAtUtc)
+                .IsRequired();
+
+            // Store enum as string (recommended)
+            entity.Property(x => x.AuthType)
+                .HasConversion<string>()
+                .HasMaxLength(50);
+        });
     }
     
     /// <inheritdoc />
@@ -206,18 +237,24 @@ public class ApplicationContext
 
         foreach (var entry in entries)
         {
-            if (entry.State == EntityState.Added)
+            switch (entry.State)
             {
-                // To be modified when User logic is added
-                // entry.Entity.CreatedBy = "TheCreateUser";
-                entry.Entity.CreatedOn = DateTime.UtcNow;
-            }
-
-            if (entry.State == EntityState.Modified)
-            {
-                // To be modified when User logic is added
-                // entry.Entity.LastModifiedBy = "TheUpdateUser";
-                entry.Entity.LastModifiedOn = DateTime.UtcNow;
+                case EntityState.Added:
+                    // To be modified when User logic is added
+                    // entry.Entity.CreatedBy = "TheCreateUser";
+                    entry.Entity.CreatedOn = DateTime.UtcNow;
+                    break;
+                case EntityState.Modified:
+                    // To be modified when User logic is added
+                    // entry.Entity.LastModifiedBy = "TheUpdateUser";
+                    entry.Entity.LastModifiedOn = DateTime.UtcNow;
+                    break;
+                case EntityState.Detached:
+                case EntityState.Unchanged:
+                case EntityState.Deleted:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
             }
         }
     }

@@ -10,7 +10,7 @@ on:
     # see CDT to UTC conversion: https://savvytime.com/converter/cdt-to-utc
     - cron: '59 4 * * 2-5'
 
-  # Can be manually triggered from the github actions page: https://github.com/SensitTechnologies/MESS/actions/workflows/deploy.yml
+  # Can be manually triggered from the GitHub actions page: https://github.com/SensitTechnologies/MESS/actions/workflows/deploy.yml
   workflow_dispatch:
 
 env:
@@ -19,174 +19,109 @@ env:
   APP_ARTIFACT: .net-app
 
 jobs:
-
-  # read last deployed artifact
-  download-last-deployed:
-    runs-on: ubuntu-latest
-
-    outputs:
-      last-version: ${{ steps.last-version.outputs.sha }}
-    
-    steps:  # Steps to read last deployed artifact
-      
-      - name: Get run ID of last Deploy workflow
-        id: get-prev-run-id  
-        run: |
-          OTHER_REPO="${{ github.repository }}"
-          WF_NAME="Deploy"
-          RUN_ID=`gh run --repo ${OTHER_REPO} list --workflow ${WF_NAME} --json databaseId --jq .[1].databaseId`
-          echo "Detected latest run id of ${RUN_ID} for workflow ${WF_NAME}"
-          echo "run-id=${RUN_ID}" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Download last artifact from this workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.LAST_DEPLOY_COMMIT }}                   # env variable with artifact name
-          github-token: ${{ github.token }}                     # only need basic github token
-          repository: ${{ github.repository }}                  # use this repository
-          run-id: ${{ steps.get-prev-run-id.outputs.run-id }}   # run id from previous step
-
-      - name: Archive default deploy version number   # (default=current) in case no new version or job doesn't finish)
-        uses: actions/upload-artifact@v4              # If there is a new version to deploy, this will be overwritten later
-        with:
-          name: ${{ env.LAST_DEPLOY_COMMIT }}
-          path: ${{ env.LAST_DEPLOY_COMMIT }}.txt
-
-      # write file contents into output to be used in "compare-results" job
-      - name: Read last deployed SHA (if exists)
-        id: last-version
-        run: |
-          if [ -f ${{ env.LAST_DEPLOY_COMMIT }}.txt ]; then
-            echo "sha=$(cat ${{ env.LAST_DEPLOY_COMMIT }}.txt)" >> $GITHUB_OUTPUT
-          else
-            echo "sha=" >> $GITHUB_OUTPUT
-          fi
-
-  # read last built artifact
-  download-last-built:
-    runs-on: ubuntu-latest
-
-    outputs:
-      built-version: ${{ steps.built-version.outputs.sha }}
-      run-id: ${{ steps.get-run-id.outputs.run-id }}
-
-    steps:  # Steps to download Build artifact
-     
-      - name: Get run ID of Build workflow
-        id: get-run-id  
-        run: |
-          OTHER_REPO="${{ github.repository }}"
-          WF_NAME="Build"
-          RUN_ID=`gh run --repo ${OTHER_REPO} list --workflow ${WF_NAME} --json databaseId --jq .[0].databaseId`
-          echo "Detected latest run id of ${RUN_ID} for workflow ${WF_NAME}"
-          echo "run-id=${RUN_ID}" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Download artifact from "Build .Net Project" workflow
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.BUILD_COMMIT }}                   # env variable with artifact name
-          github-token: ${{ github.token }}               # only need basic github token
-          repository: ${{ github.repository }}            # use this repository
-          run-id: ${{ steps.get-run-id.outputs.run-id }}  # run id from previous step
-
-      # write file contents into output to be used in "compare-results" job  
-      - name: Read built commit SHA
-        id: built-version
-        run: |
-          echo "sha=$(cat ${{ env.BUILD_COMMIT }}.txt)" >> $GITHUB_OUTPUT
-
-
-  # compares the SHA outputs from the previous two jobs to be used in the rest of the program
-  compare-results:
-    runs-on: ubuntu-latest
-
-    # wait for these jobs to finish first
-    needs: 
-      - download-last-deployed      # needed for last deployment commit SHA
-      - download-last-built         # needed for commit SHA of build action
-
-    outputs:
-      new-build: ${{ steps.compare.outputs.deploy }}
-
-    steps:
-      - name: Compare SHAs
-        id: compare
-        run: |
-          if [ "${{ needs.download-last-deployed.outputs.last-version }}" == "${{ needs.download-last-built.outputs.built-version }}" ]; then
-            echo "No new build to deploy."
-            echo "deploy=false" >> $GITHUB_OUTPUT
-          else
-            echo "New build detected!"
-            echo "deploy=true" >> $GITHUB_OUTPUT
-          fi
-
-
-  # There is a new version. upload an updated artifact
-  upload-new-artifacts:
-    runs-on: ubuntu-latest
-
-    # wait for these jobs to finish first
-    needs: 
-      - compare-results         # needed for results comparrison
-      - download-last-built     # needed for commit SHA of build action
-    
-    steps:
-      # write SHA output from download-last-build job into a txt file
-      - name: Record build SHA into last deployed sha 
-        if: needs.compare-results.outputs.new-build == 'true'
-        run: echo "${{ needs.download-last-built.outputs.built-version }}" >> ${{ env.LAST_DEPLOY_COMMIT }}.txt
-
-      # overwrite the default artifact with our new txt file
-      - name: Archive New version number
-        if: needs.compare-results.outputs.new-build == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.LAST_DEPLOY_COMMIT }}
-          path: ${{ env.LAST_DEPLOY_COMMIT }}.txt
-          overwrite: true
-
-  # There is a new version. Deploy it to Azure
   deploy:
     runs-on: ubuntu-latest
 
-    # wait for these jobs to finish first
-    needs: 
-      - compare-results         # needed for results comparrison
-      - download-last-built     # needed for run-id of build action
+    outputs:
+      should-deploy: ${{ steps.compare.outputs.deploy }}
 
     environment:
-        name: 'Production'
-        url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+      name: 'Production'
+      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
 
-    steps:  # There is a new version. Deploy!
+    steps:
+      # 1. Checkout with tags
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Download artifact from "Build .Net Project" workflow
-        if: needs.compare-results.outputs.new-build == 'true'
+      # 2. Fetch tags
+      - name: Fetch tags
+        run: git fetch --tags
+
+      - name: Fetch main branch
+        run: git fetch origin main
+
+      # 3. Get latest commit
+      - name: Get latest commit
+        id: latest
+        run: echo "sha=$(git rev-parse origin/main)" >> $GITHUB_OUTPUT
+
+      # 4. Get deployed commit
+      - name: Get deployed commit
+        id: deployed
+        run: |
+          if git rev-parse deployed-prod >/dev/null 2>&1; then
+            echo "sha=$(git rev-parse deployed-prod)" >> $GITHUB_OUTPUT
+          else
+            echo "sha=" >> $GITHUB_OUTPUT
+            echo "No deployed tag found"
+          fi
+
+      # 5. Compare
+      - name: Compare commits
+        id: compare
+        run: |
+          DEPLOYED="${{ steps.deployed.outputs.sha }}"
+          LATEST="${{ steps.latest.outputs.sha }}"
+
+          if [ -z "$DEPLOYED" ]; then
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "First deployment"
+            exit 0
+          fi
+
+          if [ "$LATEST" = "$DEPLOYED" ]; then
+            echo "deploy=false" >> $GITHUB_OUTPUT
+          else
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Set GH CLI auth
+        run: echo "${{ github.token }}" | gh auth login --with-token
+        
+      - name: Get Build run ID
+        id: build-run
+        if: steps.compare.outputs.deploy == 'true'
+        run: |
+          RUN_ID=$(gh run list --workflow Build --json databaseId --jq '.[0].databaseId')
+          echo "run-id=$RUN_ID" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # 6. Download artifact
+      - name: Download artifact
+        if: steps.compare.outputs.deploy == 'true'
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.APP_ARTIFACT }}                             # env variable with artifact name
-          github-token: ${{ github.token }}                         # only need basic github token
-          repository: ${{ github.repository }}                      # use this repository
-          run-id: ${{ needs.download-last-built.outputs.run-id }}   # run id from previous step
+          name: ${{ env.APP_ARTIFACT }}
+          run-id: ${{ steps.build-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
 
+      # 7. Deploy to Azure
       - name: Deploy to Azure Web App
-        if: needs.compare-results.outputs.new-build == 'true'
+        if: steps.compare.outputs.deploy == 'true'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'sensit-mess'
           slot-name: 'Production'
           package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_AFD862453FEA47FF843B6F50347257E2 }}
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
 
+      # 8. Update tag
+      - name: Update deployed tag
+        if: steps.compare.outputs.deploy == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag -f deployed-prod ${{ steps.latest.outputs.sha }}
+          git push origin deployed-prod --force
 
   Call-Documentation:
     needs:
       - deploy
-      - compare-results
-    if: needs.compare-results.outputs.new-build == 'true'
+    if: needs.deploy.outputs.should-deploy == 'true'
     uses: ./.github/workflows/deploy_documentation.yml

@@ -48,11 +48,6 @@ echo "Publishing from commit:"
 git --no-pager log -1 --oneline
 echo
 
-if [ -d "$PUBLISH_DIR" ]; then
-  echo "Cleaning publish directory..."
-  rm -rf "$PUBLISH_DIR"
-fi
-
 mkdir -p "$PUBLISH_DIR"
 
 dotnet publish "$PROJECT" \

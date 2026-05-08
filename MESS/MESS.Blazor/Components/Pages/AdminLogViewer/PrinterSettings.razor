@@ -34,69 +34,74 @@
                             <DataAnnotationsValidator />
 
                             <div class="alert alert-warning">
-                                <strong>Configure your Brother PT-P700 label printer here.</strong>
-                                <br/>
-                                Once configured, QR code labels and red tag labels will print directly to your network printer.
+                                <strong>Configure Brother label printers here.</strong>
+                                <br />
+                                Print actions will try each enabled Brother printer before falling back to the browser print dialog.
                             </div>
 
-                            <!-- Enable/Disable Row -->
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <div class="form-check form-switch">
-                                        <InputCheckbox class="form-check-input" id="enablePrinter" @bind-Value="Settings.IsEnabled" />
-                                        <label class="form-check-label" for="enablePrinter">
-                                            Enable Network Printer
-                                        </label>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h5 class="mb-0">Brother Printers</h5>
+                                <button type="button" class="btn btn-outline-primary btn-sm" @onclick="AddPrinter">
+                                    Add Printer
+                                </button>
+                            </div>
+
+                            @if (Settings.BrotherPrinters.Count == 0)
+                            {
+                                <div class="alert alert-info">
+                                    No Brother printers are configured.
+                                </div>
+                            }
+
+                            @foreach (var printer in Settings.BrotherPrinters)
+                            {
+                                <div class="border rounded p-3 mb-3">
+                                    <div class="row g-3 align-items-end">
+                                        <div class="col-md-2">
+                                            <div class="form-check form-switch mb-2">
+                                                <InputCheckbox class="form-check-input" @bind-Value="printer.IsEnabled" />
+                                                <label class="form-check-label">Enabled</label>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-3">
+                                            <label class="form-label">Printer Type</label>
+                                            <InputSelect class="form-select" @bind-Value="printer.PrinterType">
+                                                <option value="BrotherPTP700">Brother PT-P700</option>
+                                                <option value="BrotherQL800">Brother QL-800</option>
+                                                <option value="BrotherQL820NWB">Brother QL-820NWB</option>
+                                                <option value="BrotherPTP900W">Brother PT-P900W</option>
+                                                <option value="BrotherNetwork">Brother Network Printer</option>
+                                            </InputSelect>
+                                        </div>
+
+                                        <div class="col-md-3">
+                                            <label class="form-label">IP Address <span class="text-danger">*</span></label>
+                                            <InputText class="form-control" @bind-Value="printer.IpAddress" placeholder="192.168.1.100" />
+                                        </div>
+
+                                        <div class="col-md-2">
+                                            <label class="form-label">Port</label>
+                                            <InputNumber class="form-control" @bind-Value="printer.Port" />
+                                        </div>
+
+                                        <div class="col-md-2 d-flex gap-2">
+                                            <button type="button" class="btn btn-outline-secondary" @onclick="() => TestConnectionAsync(printer)" disabled="@(IsSaving || IsTesting)">
+                                                Test
+                                            </button>
+                                            <button type="button" class="btn btn-outline-danger" @onclick="() => RemovePrinter(printer)" disabled="@(IsSaving || IsTesting)">
+                                                Remove
+                                            </button>
+                                        </div>
+
+                                        <div class="col-12">
+                                            <label class="form-label">Notes</label>
+                                            <InputText class="form-control" @bind-Value="printer.Notes" placeholder="Optional printer notes or location" />
+                                        </div>
                                     </div>
-                                    <small class="text-muted d-block mt-1">
-                                        When disabled, printing will fall back to browser print dialog
-                                    </small>
                                 </div>
-                            </div>
+                            }
 
-                            <!-- Basic Settings -->
-                            <div class="row g-3 mb-3">
-                                <div class="col-md-6">
-                                    <label class="form-label">Printer Type</label>
-                                    <InputSelect class="form-select" @bind-Value="Settings.PrinterType">
-                                        <option value="BrotherPTP700">Brother PT-P700</option>
-                                        <option value="BrotherQL800">Brother QL-800</option>
-                                        <option value="Generic">Generic Network Printer</option>
-                                    </InputSelect>
-                                </div>
-
-                                <div class="col-md-6">
-                                    <label class="form-label">IP Address <span class="text-danger">*</span></label>
-                                    <InputText class="form-control" @bind-Value="Settings.IpAddress" placeholder="192.168.1.100" />
-                                    <small class="text-muted">Find this in your printer's network settings</small>
-                                </div>
-                            </div>
-
-                            <!-- Connection Settings -->
-                            <div class="row g-3 mb-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Port</label>
-                                    <InputNumber class="form-control" @bind-Value="Settings.Port" />
-                                    <small class="text-muted">Standard: 9100 (raw printing)</small>
-                                </div>
-
-                                <div class="col-md-4">
-                                    <label class="form-label">Timeout (ms)</label>
-                                    <InputNumber class="form-control" @bind-Value="Settings.TimeoutMilliseconds" />
-                                </div>
-
-                                <div class="col-md-4">
-                                    <div class="form-check mt-4">
-                                        <InputCheckbox class="form-check-input" id="autoFallback" @bind-Value="Settings.AutoFallbackToBrowser" />
-                                        <label class="form-check-label" for="autoFallback">
-                                            Auto-Fallback to Browser
-                                        </label>
-                                        <small class="text-muted d-block">Fall back to browser print if network print fails</small>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Label Settings -->
                             <div class="row g-3 mb-3">
                                 <div class="col-md-4">
                                     <label class="form-label">Label Width (mm)</label>
@@ -108,11 +113,15 @@
                                     <label class="form-label">Label Height (mm)</label>
                                     <InputNumber class="form-control" @bind-Value="Settings.LabelHeightMm" />
                                 </div>
+
+                                <div class="col-md-4">
+                                    <label class="form-label">Timeout (ms)</label>
+                                    <InputNumber class="form-control" @bind-Value="Settings.TimeoutMilliseconds" />
+                                </div>
                             </div>
 
-                            <!-- Print Options -->
                             <div class="row mb-3">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <div class="form-check">
                                         <InputCheckbox class="form-check-input" id="printQr" @bind-Value="Settings.PrintQrLabels" />
                                         <label class="form-check-label" for="printQr">
@@ -121,7 +130,7 @@
                                     </div>
                                 </div>
 
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <div class="form-check">
                                         <InputCheckbox class="form-check-input" id="printRedTags" @bind-Value="Settings.PrintRedTags" />
                                         <label class="form-check-label" for="printRedTags">
@@ -129,15 +138,18 @@
                                         </label>
                                     </div>
                                 </div>
+
+                                <div class="col-md-4">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" id="autoFallback" @bind-Value="Settings.AutoFallbackToBrowser" />
+                                        <label class="form-check-label" for="autoFallback">
+                                            Auto-Fallback to Browser
+                                        </label>
+                                        <small class="text-muted d-block">Fall back to browser print if all configured printers fail</small>
+                                    </div>
+                                </div>
                             </div>
 
-                            <!-- Notes -->
-                            <div class="mb-3">
-                                <label class="form-label">Notes</label>
-                                <InputTextArea class="form-control" @bind-Value="Settings.Notes" rows="3" placeholder="Add any notes about this printer configuration..." />
-                            </div>
-
-                            <!-- Buttons -->
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-success" disabled="@IsSaving">
                                     @if (IsSaving)
@@ -155,7 +167,7 @@
                                     }
                                     else
                                     {
-                                        <span>🔗 Test Connection</span>
+                                        <span>Test All Connections</span>
                                     }
                                 </button>
                             </div>
@@ -186,6 +198,7 @@
         try
         {
             Settings = await PrinterSettingsService.GetSettingsAsync();
+            EnsurePrinterList();
         }
         catch (Exception ex)
         {
@@ -201,6 +214,7 @@
         try
         {
             Settings = await PrinterSettingsService.UpdateSettingsAsync(Settings!);
+            EnsurePrinterList();
             ToastService.ShowSuccess("Printer settings saved successfully");
         }
         catch (Exception ex)
@@ -225,27 +239,91 @@
 
         try
         {
-            bool success = await PrinterSettingsService.TestPrinterConnectionAsync();
-            
+            var success = await PrinterSettingsService.TestPrinterConnectionAsync();
+
             if (success)
             {
                 ConnectionTestAlertClass = "alert-success";
-                ConnectionTestMessage = "✅ Successfully connected to printer!";
+                ConnectionTestMessage = "Successfully connected to at least one configured printer.";
             }
             else
             {
                 ConnectionTestAlertClass = "alert-danger";
-                ConnectionTestMessage = "❌ Failed to connect to printer. Check IP address, port, and network connectivity.";
+                ConnectionTestMessage = "Failed to connect to any configured printer. Check IP address, port, and network connectivity.";
             }
         }
         catch (Exception ex)
         {
             ConnectionTestAlertClass = "alert-danger";
-            ConnectionTestMessage = $"❌ Connection test error: {ex.Message}";
+            ConnectionTestMessage = $"Connection test error: {ex.Message}";
         }
         finally
         {
             IsTesting = false;
         }
+    }
+
+    private async Task TestConnectionAsync(BrotherPrinterSettingsDTO printer)
+    {
+        IsTesting = true;
+        ConnectionTestMessage = null;
+
+        try
+        {
+            var success = await PrinterSettingsService.TestPrinterConnectionAsync(printer);
+
+            if (success)
+            {
+                ConnectionTestAlertClass = "alert-success";
+                ConnectionTestMessage = $"Successfully connected to {printer.IpAddress}:{printer.Port}.";
+            }
+            else
+            {
+                ConnectionTestAlertClass = "alert-danger";
+                ConnectionTestMessage = $"Failed to connect to {printer.IpAddress}:{printer.Port}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ConnectionTestAlertClass = "alert-danger";
+            ConnectionTestMessage = $"Connection test error: {ex.Message}";
+        }
+        finally
+        {
+            IsTesting = false;
+        }
+    }
+
+    private void AddPrinter()
+    {
+        Settings?.BrotherPrinters.Add(new BrotherPrinterSettingsDTO
+        {
+            IsEnabled = true,
+            PrinterType = "BrotherPTP700",
+            Port = 9100
+        });
+    }
+
+    private void RemovePrinter(BrotherPrinterSettingsDTO printer)
+    {
+        Settings?.BrotherPrinters.Remove(printer);
+    }
+
+    private void EnsurePrinterList()
+    {
+        if (Settings is null || Settings.BrotherPrinters.Count > 0)
+        {
+            return;
+        }
+
+        Settings.BrotherPrinters.Add(new BrotherPrinterSettingsDTO
+        {
+            Id = Settings.Id,
+            IsEnabled = Settings.IsEnabled,
+            PrinterType = Settings.PrinterType,
+            IpAddress = Settings.IpAddress,
+            Port = Settings.Port,
+            Notes = Settings.Notes
+        });
     }
 }

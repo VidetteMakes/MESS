@@ -65,4 +65,45 @@ public class PrinterSettingsDTO
     /// Gets or sets notes about the printer.
     /// </summary>
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the configured Brother/network printers.
+    /// </summary>
+    public List<BrotherPrinterSettingsDTO> BrotherPrinters { get; set; } = [];
+}
+
+/// <summary>
+/// Data Transfer Object for one configured Brother/network printer.
+/// </summary>
+public class BrotherPrinterSettingsDTO
+{
+    /// <summary>
+    /// Gets or sets the primary key.
+    /// </summary>
+    public int Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets a value indicating whether this printer is enabled.
+    /// </summary>
+    public bool IsEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the type of printer.
+    /// </summary>
+    public string PrinterType { get; set; } = "BrotherPTP700";
+
+    /// <summary>
+    /// Gets or sets the IP address of the printer.
+    /// </summary>
+    public string? IpAddress { get; set; }
+
+    /// <summary>
+    /// Gets or sets the network port.
+    /// </summary>
+    public int Port { get; set; } = 9100;
+
+    /// <summary>
+    /// Gets or sets notes about this printer.
+    /// </summary>
+    public string? Notes { get; set; }
 }

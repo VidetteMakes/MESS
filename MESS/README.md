@@ -65,6 +65,28 @@ dotnet user-secrets set "DatabaseConnection" "Data Source = 123456.db"
 ```
 
 #### Setup Development Database connection
+The current app uses PostgreSQL, not SQLite. The Blazor app applies EF migrations on startup, so a
+Postgres instance must be running before `dotnet run`.
+
+From the `MESS.Blazor` directory:
+
 ```shell
-dotnet user-secrets set "ConnectionStrings:MESSConnection" "Data Source=developmentMESSDb.db"
+dotnet user-secrets set "ConnectionStrings:MESSConnection" "Host=localhost;Port=5432;Database=mess;Username=mess;Password=mypassword123;Include Error Detail=true"
+```
+
+One local option with Docker:
+
+```shell
+docker run --name mess-postgres ^
+  -e POSTGRES_DB=mess ^
+  -e POSTGRES_USER=mess ^
+  -e POSTGRES_PASSWORD=mypassword123 ^
+  -p 5432:5432 ^
+  -d postgres:17
+```
+
+Then start the app:
+
+```shell
+dotnet run --launch-profile http
 ```

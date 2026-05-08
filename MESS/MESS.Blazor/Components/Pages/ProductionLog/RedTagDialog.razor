@@ -1,6 +1,8 @@
 @using MESS.Services.UI.ProductionLogEvent
+@using MESS.Services.CRUD.PrinterSettings
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IProductionLogEventService ProductionLogEventService
+@inject IPrinterSettingsService PrinterSettingsService
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthProvider
 
@@ -150,7 +152,19 @@
     /// </summary>
     private async Task OnSubmitClicked()
     {
-        if (_jsModule is not null)
+        var settings = await PrinterSettingsService.GetSettingsAsync();
+        var printedToNetworkPrinter = false;
+
+        printedToNetworkPrinter = await PrinterSettingsService.TryPrintAsync(
+            "MESS Red Tag",
+            BuildRedTagContent());
+
+        if (!printedToNetworkPrinter && !settings.AutoFallbackToBrowser)
+        {
+            throw new InvalidOperationException("Could not print red tag to any configured Brother printer.");
+        }
+
+        if (!printedToNetworkPrinter && _jsModule is not null)
         {
             try
             {
@@ -163,6 +177,20 @@
         }
 
         await OnSubmit.InvokeAsync();
+    }
+
+    private string BuildRedTagContent()
+    {
+        return string.Join(
+            Environment.NewLine,
+            "RED TAG",
+            $"Date: {AttemptTime?.LocalDateTime.ToString("g") ?? "N/A"}",
+            $"ID: {AttemptId?.ToString() ?? "None"}",
+            $"Product: {ProductionLogEventService.CurrentProductName}",
+            $"Work Instruction: {ProductionLogEventService.CurrentWorkInstructionName}",
+            $"Step: {StepName}",
+            $"Operator: {OperatorName}",
+            $"Failure Note: {FailureNotes}");
     }
 
     /// <summary>

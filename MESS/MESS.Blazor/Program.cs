@@ -31,6 +31,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.FluentUI.AspNetCore.Components;
 using MudBlazor.Services;
+using Npgsql;
 using Serilog;
 using Serilog.Events;
 
@@ -39,6 +40,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContextFactory<ApplicationContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("MESSConnection");
+
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException(
+            "Connection string 'MESSConnection' was not found. " +
+            "Set it with 'dotnet user-secrets set \"ConnectionStrings:MESSConnection\" " +
+            "\"Host=localhost;Port=5432;Database=mess;Username=mess;Password=mypassword123;Include Error Detail=true\"' " +
+            "from the MESS.Blazor project.");
+    }
 
     options.UseNpgsql(connectionString, npgsqlOptions =>
     {
@@ -156,19 +166,35 @@ var app = builder.Build();
 // Seed data
 using (var scope = app.Services.CreateScope())
 {
-    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationContext>>();
-    await using var dbContext = await dbContextFactory.CreateDbContextAsync();
-    await dbContext.Database.MigrateAsync();
+    try
+    {
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<ApplicationContext>>();
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
+        await dbContext.Database.MigrateAsync();
 
-    // Initializes the roles if they are not already created in the database
-    var roleInit = scope.ServiceProvider.GetRequiredService<RoleInitializer>();
-    await roleInit.InitializeAsync();
-    
-    // Seed default technician
-    await InitialUserSeed.SeedDefaultUserAsync(scope.ServiceProvider);
-    
-    // Seeds default data
-    SeedWorkInstructions.Seed(scope.ServiceProvider);
+        // Initializes the roles if they are not already created in the database
+        var roleInit = scope.ServiceProvider.GetRequiredService<RoleInitializer>();
+        await roleInit.InitializeAsync();
+        
+        // Seed default technician
+        await InitialUserSeed.SeedDefaultUserAsync(scope.ServiceProvider);
+        
+        // Seeds default data
+        SeedWorkInstructions.Seed(scope.ServiceProvider);
+    }
+    catch (NpgsqlException ex)
+    {
+        Log.Fatal(ex,
+            "Failed to connect to PostgreSQL during startup. Ensure PostgreSQL is running and " +
+            "the 'MESSConnection' secret is set. Expected local dev defaults: " +
+            "Host=localhost;Port=5432;Database=mess;Username=mess.");
+
+        throw new InvalidOperationException(
+            "MESS startup could not connect to PostgreSQL. " +
+            "Start a local PostgreSQL server on localhost:5432 and verify the " +
+            "'MESSConnection' user secret for MESS.Blazor.",
+            ex);
+    }
 }
 
 

@@ -4,6 +4,7 @@ using MESS.Services.DTOs.PrinterSettings;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
+using System.Text;
 using System.Net.Sockets;
 
 namespace MESS.Services.CRUD.PrinterSettings;
@@ -32,12 +33,13 @@ public class PrinterSettingsService : IPrinterSettingsService
 
         var settings = await context.PrinterSettings
             .AsNoTracking()
-            .FirstOrDefaultAsync();
+            .OrderBy(p => p.Id)
+            .ToListAsync();
 
-        if (settings is null)
+        if (settings.Count == 0)
         {
             // Create default settings if none exist
-            settings = new MESS.Data.Models.PrinterSettings
+            var defaultSettings = new MESS.Data.Models.PrinterSettings
             {
                 IsEnabled = false,
                 PrinterType = "BrotherPTP700",
@@ -54,10 +56,12 @@ public class PrinterSettingsService : IPrinterSettingsService
                 LastModifiedBy = "system"
             };
 
-            context.PrinterSettings.Add(settings);
+            context.PrinterSettings.Add(defaultSettings);
             await context.SaveChangesAsync();
 
             Log.Information("Created default printer settings");
+
+            settings.Add(defaultSettings);
         }
 
         return MapToDTO(settings);
@@ -71,37 +75,59 @@ public class PrinterSettingsService : IPrinterSettingsService
         await using var context = await _contextFactory.CreateDbContextAsync();
         var currentUser = await GetCurrentUserNameAsync();
 
-        var settings = await context.PrinterSettings.FirstOrDefaultAsync();
+        var requestedPrinters = dto.BrotherPrinters.Count > 0
+            ? dto.BrotherPrinters
+            : [MapLegacyPrinter(dto)];
 
-        if (settings is null)
+        var existingPrinters = await context.PrinterSettings
+            .OrderBy(p => p.Id)
+            .ToListAsync();
+
+        foreach (var requestedPrinter in requestedPrinters)
         {
-            // Create if doesn't exist
-            settings = new MESS.Data.Models.PrinterSettings
+            var settings = requestedPrinter.Id > 0
+                ? existingPrinters.FirstOrDefault(p => p.Id == requestedPrinter.Id)
+                : null;
+
+            if (settings is null)
             {
-                CreatedBy = currentUser,
-            };
-            context.PrinterSettings.Add(settings);
+                settings = new MESS.Data.Models.PrinterSettings
+                {
+                    CreatedBy = currentUser,
+                };
+                context.PrinterSettings.Add(settings);
+            }
+
+            settings.IsEnabled = requestedPrinter.IsEnabled;
+            settings.PrinterType = requestedPrinter.PrinterType;
+            settings.IpAddress = requestedPrinter.IpAddress?.Trim();
+            settings.Port = requestedPrinter.Port;
+            settings.TimeoutMilliseconds = dto.TimeoutMilliseconds;
+            settings.AutoFallbackToBrowser = dto.AutoFallbackToBrowser;
+            settings.LabelWidthMm = dto.LabelWidthMm;
+            settings.LabelHeightMm = dto.LabelHeightMm;
+            settings.PrintQrLabels = dto.PrintQrLabels;
+            settings.PrintRedTags = dto.PrintRedTags;
+            settings.Notes = requestedPrinter.Notes;
+            settings.LastModifiedBy = currentUser;
         }
 
-        // Update fields
-        settings.IsEnabled = dto.IsEnabled;
-        settings.PrinterType = dto.PrinterType;
-        settings.IpAddress = dto.IpAddress;
-        settings.Port = dto.Port;
-        settings.TimeoutMilliseconds = dto.TimeoutMilliseconds;
-        settings.AutoFallbackToBrowser = dto.AutoFallbackToBrowser;
-        settings.LabelWidthMm = dto.LabelWidthMm;
-        settings.LabelHeightMm = dto.LabelHeightMm;
-        settings.PrintQrLabels = dto.PrintQrLabels;
-        settings.PrintRedTags = dto.PrintRedTags;
-        settings.Notes = dto.Notes;
-        settings.LastModifiedBy = currentUser;
+        var requestedIds = requestedPrinters
+            .Where(p => p.Id > 0)
+            .Select(p => p.Id)
+            .ToHashSet();
+
+        var removedPrinters = existingPrinters
+            .Where(p => p.Id > 0 && !requestedIds.Contains(p.Id))
+            .ToList();
+
+        context.PrinterSettings.RemoveRange(removedPrinters);
 
         await context.SaveChangesAsync();
 
         Log.Information("Updated printer settings by user {UserName}", currentUser);
 
-        return MapToDTO(settings);
+        return await GetSettingsAsync();
     }
 
     /// <inheritdoc />
@@ -109,16 +135,41 @@ public class PrinterSettingsService : IPrinterSettingsService
     {
         var settings = await GetSettingsAsync();
 
-        if (!settings.IsEnabled || string.IsNullOrWhiteSpace(settings.IpAddress))
+        var printers = GetEnabledPrinters(settings).ToList();
+        if (printers.Count == 0)
+        {
+            Log.Warning("Printer test failed: no enabled printer with an IP address is configured");
+            return false;
+        }
+
+        foreach (var printer in printers)
+        {
+            if (await TestPrinterConnectionAsync(printer))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TestPrinterConnectionAsync(BrotherPrinterSettingsDTO printer)
+    {
+        ArgumentNullException.ThrowIfNull(printer);
+
+        if (!printer.IsEnabled || string.IsNullOrWhiteSpace(printer.IpAddress))
         {
             Log.Warning("Printer test failed: printer not enabled or IP address not configured");
             return false;
         }
 
+        var settings = await GetSettingsAsync();
+
         try
         {
             using var client = new TcpClient();
-            var connectTask = client.ConnectAsync(settings.IpAddress, settings.Port);
+            var connectTask = client.ConnectAsync(printer.IpAddress, printer.Port);
             var completedTask = await Task.WhenAny(
                 connectTask,
                 Task.Delay(settings.TimeoutMilliseconds)
@@ -132,21 +183,77 @@ public class PrinterSettingsService : IPrinterSettingsService
 
             if (connectTask.IsCompletedSuccessfully)
             {
-                Log.Information("Printer connection test successful to {IpAddress}:{Port}", settings.IpAddress, settings.Port);
+                Log.Information("Printer connection test successful to {IpAddress}:{Port}", printer.IpAddress, printer.Port);
                 return true;
             }
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "Printer connection test failed to {IpAddress}:{Port}", settings.IpAddress, settings.Port);
+            Log.Warning(ex, "Printer connection test failed to {IpAddress}:{Port}", printer.IpAddress, printer.Port);
             return false;
         }
 
         return false;
     }
 
-    private static PrinterSettingsDTO MapToDTO(MESS.Data.Models.PrinterSettings entity)
+    /// <inheritdoc />
+    public async Task<bool> TryPrintAsync(string jobName, string content)
     {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            return false;
+        }
+
+        var settings = await GetSettingsAsync();
+
+        foreach (var printer in GetEnabledPrinters(settings))
+        {
+            try
+            {
+                using var client = new TcpClient();
+                var connectTask = client.ConnectAsync(printer.IpAddress!, printer.Port);
+                var completedTask = await Task.WhenAny(connectTask, Task.Delay(settings.TimeoutMilliseconds));
+
+                if (completedTask != connectTask || !connectTask.IsCompletedSuccessfully)
+                {
+                    Log.Warning(
+                        "Network print job {JobName} could not connect to {IpAddress}:{Port}",
+                        jobName,
+                        printer.IpAddress,
+                        printer.Port);
+                    continue;
+                }
+
+                await using var stream = client.GetStream();
+                var payload = BuildRawPrintPayload(jobName, content);
+                await stream.WriteAsync(payload);
+                await stream.FlushAsync();
+
+                Log.Information(
+                    "Network print job {JobName} sent to {IpAddress}:{Port}",
+                    jobName,
+                    printer.IpAddress,
+                    printer.Port);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(
+                    ex,
+                    "Network print job {JobName} failed on {IpAddress}:{Port}",
+                    jobName,
+                    printer.IpAddress,
+                    printer.Port);
+            }
+        }
+
+        return false;
+    }
+
+    private static PrinterSettingsDTO MapToDTO(IReadOnlyList<MESS.Data.Models.PrinterSettings> entities)
+    {
+        var entity = entities.First();
         return new PrinterSettingsDTO
         {
             Id = entity.Id,
@@ -160,8 +267,49 @@ public class PrinterSettingsService : IPrinterSettingsService
             LabelHeightMm = entity.LabelHeightMm,
             PrintQrLabels = entity.PrintQrLabels,
             PrintRedTags = entity.PrintRedTags,
+            Notes = entity.Notes,
+            BrotherPrinters = entities.Select(MapToBrotherPrinterDTO).ToList()
+        };
+    }
+
+    private static BrotherPrinterSettingsDTO MapToBrotherPrinterDTO(MESS.Data.Models.PrinterSettings entity)
+    {
+        return new BrotherPrinterSettingsDTO
+        {
+            Id = entity.Id,
+            IsEnabled = entity.IsEnabled,
+            PrinterType = entity.PrinterType,
+            IpAddress = entity.IpAddress,
+            Port = entity.Port,
             Notes = entity.Notes
         };
+    }
+
+    private static BrotherPrinterSettingsDTO MapLegacyPrinter(PrinterSettingsDTO dto)
+    {
+        return new BrotherPrinterSettingsDTO
+        {
+            Id = dto.Id,
+            IsEnabled = dto.IsEnabled,
+            PrinterType = dto.PrinterType,
+            IpAddress = dto.IpAddress,
+            Port = dto.Port,
+            Notes = dto.Notes
+        };
+    }
+
+    private static IEnumerable<BrotherPrinterSettingsDTO> GetEnabledPrinters(PrinterSettingsDTO settings)
+    {
+        return settings.BrotherPrinters
+            .Where(printer => printer.IsEnabled && !string.IsNullOrWhiteSpace(printer.IpAddress));
+    }
+
+    private static byte[] BuildRawPrintPayload(string jobName, string content)
+    {
+        var sanitizedJobName = string.IsNullOrWhiteSpace(jobName) ? "MESS Print Job" : jobName.Trim();
+        var sanitizedContent = content.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\n", "\r\n", StringComparison.Ordinal);
+        var text = $"\x1B@{sanitizedJobName}\r\n\r\n{sanitizedContent}\r\n\f";
+        return Encoding.ASCII.GetBytes(text);
     }
 
     private async Task<string> GetCurrentUserNameAsync()

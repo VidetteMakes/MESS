@@ -8,6 +8,11 @@
         <div class="col-auto">
             <div class="border rounded ps-2 py-2 h-100 d-flex align-items-center gap-2 shadow-sm" style="padding-right: 0.5rem;">
 
+                @if (IsMinimalEditingMode)
+                {
+                    <small class="text-muted fst-italic">Read-only — part associations cannot change while production logs exist.</small>
+                }
+
                 <!-- Part Name -->
                 <div class="d-flex flex-column">
                     <label class="form-label mb-1">Part Name</label>
@@ -15,9 +20,10 @@
                            class="form-control form-control-sm"
                            @bind="PartNode!.Name"
                            @bind:event="oninput"
-                           @bind:after="NotifyChangedAsync" />
+                           @bind:after="NotifyChangedAsync"
+                           readonly="@IsMinimalEditingMode" />
                 </div>
-                
+
                 <!-- Part Number -->
                 <div class="d-flex flex-column">
                     <label class="form-label mb-1">Part Number</label>
@@ -25,14 +31,15 @@
                            class="form-control form-control-sm"
                            @bind="PartNode!.Number"
                            @bind:event="oninput"
-                           @bind:after="NotifyChangedAsync" />
+                           @bind:after="NotifyChangedAsync"
+                           readonly="@IsMinimalEditingMode" />
                 </div>
 
             </div>
         </div>
     </div>
 
-    <NodeActionMenu OnAction="HandleNodeAction" />
+    <NodeActionMenu OnAction="HandleNodeAction" IsMinimalEditingMode="IsMinimalEditingMode" />
 </div>
 
 @code {
@@ -44,6 +51,13 @@
 
     [Parameter, EditorRequired]
     public PartNodeFormDTO? PartNode { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, all part-node fields are rendered read-only and the action menu
+    /// shows only disabled items. Follows the minimal editing mode constraint.
+    /// </summary>
+    [Parameter]
+    public bool IsMinimalEditingMode { get; set; }
 
     private async Task HandleNodeAction(string action)
     {

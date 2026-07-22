@@ -50,4 +50,20 @@ public class PartDefinitionResolver : IPartDefinitionResolver
         context.PartDefinitions.Add(newPart);
         return newPart;
     }
+
+    ///<inheritdoc/>
+    public async Task<PartDefinition?> LookupAsync(ApplicationContext context, string? name)
+    {
+        var normalizedName = name?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedName))
+            return null;
+
+        var upperName = normalizedName.ToUpperInvariant();
+
+        return context.PartDefinitions
+                   .Local
+                   .FirstOrDefault(p => p.Name.ToUpper() == upperName)
+               ?? await context.PartDefinitions
+                   .FirstOrDefaultAsync(p => p.Name.ToUpper() == upperName);
+    }
 }

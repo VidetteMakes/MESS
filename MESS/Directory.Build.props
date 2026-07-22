@@ -8,4 +8,19 @@
   <PropertyGroup>
     <NuGetAuditLevel>moderate</NuGetAuditLevel>
   </PropertyGroup>
+
+  <!--
+    Suppress specific advisories that have no upstream fix available.
+
+    GHSA-2m69-gcr7-jv3q — SQLitePCLRaw.lib.e_sqlite3 <= 2.1.11 (high severity).
+      The advisory notes "No patched version has been released" as of 2026-06-18. The underlying
+      SQLite CVE is fixed in libsqlite >= 3.50.2 but the SQLitePCLRaw wrapper has not been rebuilt.
+      Pulled transitively by Microsoft.EntityFrameworkCore.Sqlite (10.0.7), which the solution ships
+      as an optional provider swap and uses in test projects. Production runs on PostgreSQL
+      (Npgsql.EntityFrameworkCore.PostgreSQL) — SQLite is not exposed to production traffic.
+      Revisit when SQLitePCLRaw publishes a rebuilt package (>= 2.1.12) and remove this entry.
+  -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
 </Project>

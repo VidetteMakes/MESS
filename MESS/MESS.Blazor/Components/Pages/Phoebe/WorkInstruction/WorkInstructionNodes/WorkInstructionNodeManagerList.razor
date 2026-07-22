@@ -8,6 +8,7 @@
               Items="WorkInstructionNodes"
               Handle=".drag-handle"
               OnUpdate="OnItemsChanged"
+              Disabled="IsMinimalEditingMode"
               Context="node">
     <SortableItemTemplate>
         @NodeTemplate(node)
@@ -19,34 +20,33 @@
     /// <summary>
     /// Gets or sets the list of work instruction nodes to render and manage in the sortable list.
     /// </summary>
-    /// <remarks>
-    /// Each <see cref="WorkInstructionNode"/> in the list can represent either a <see cref="PartNode"/> or a <see cref="Step"/>.
-    /// This parameter is required and serves as the data source for drag-and-drop reordering,
-    /// as well as for displaying and editing the content of the nodes.
-    /// /// </remarks>
     [Parameter, EditorRequired]
     public required List<WorkInstructionNodeFormDTO> WorkInstructionNodes { get; set; }
-    
+
     /// <summary>
     /// Event callback that is triggered when *any* of the steps in this list has been changed.
-    /// Use this to notify the parent page that the editor state should be marked as dirty.
     /// </summary>
     [Parameter]
     public EventCallback<WorkInstructionNodeFormDTO?> OnChanged { get; set; }
-    
+
     /// <summary>
     /// Event callback triggered when a node is removed from the list.
-    /// The removed <see cref="WorkInstructionNode"/> is passed as the argument.
     /// </summary>
     [Parameter]
     public EventCallback<WorkInstructionNodeFormDTO> OnNodeRemoved { get; set; }
-    
+
     /// <summary>
-    /// Event callback that is triggered when a New Node needs to be made
-    /// Use this to create a new node of a specific node type at a specified index.
+    /// Event callback that is triggered when a new node needs to be created at an index.
     /// </summary>
     [Parameter]
     public EventCallback<(string, int)> OnNewNodeAt { get; set; }
+
+    /// <summary>
+    /// When <c>true</c>, drag-and-drop reordering is disabled and structural node actions are
+    /// hidden/disabled. This follows Minimal Editing Mode for instructions with production logs.
+    /// </summary>
+    [Parameter]
+    public bool IsMinimalEditingMode { get; set; }
 
     private Dictionary<Guid, BlazoredTextEditor> EditorRefs { get; set; } = new();
     private Dictionary<Guid, string> ActiveFields { get; set; } = new();
@@ -54,15 +54,26 @@
     private RenderFragment<WorkInstructionNodeFormDTO> NodeTemplate => (node) =>
         @<div id="node-@node.Position">
             <div class="d-flex mb-3 border rounded disable-highlight shadow-sm">
-                <div class="d-flex align-items-center drag-handle me-2">
-                    <i class="bi bi-grip-vertical h3"/>
-                    <div class="vr me-2"/>
-                </div>
+                @if (!IsMinimalEditingMode)
+                {
+                    <div class="d-flex align-items-center drag-handle me-2">
+                        <i class="bi bi-grip-vertical h3"/>
+                        <div class="vr me-2"/>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex align-items-center me-2 px-2 text-muted" title="Reordering disabled — production logs exist.">
+                        <i class="bi bi-grip-vertical h3 opacity-25"/>
+                        <div class="vr me-2"/>
+                    </div>
+                }
                 <div class="flex-grow-1 my-1">
                     @switch (node)
                     {
                         case PartNodeFormDTO partNode:
                             <PartNodeView PartNode="partNode"
+                                          IsMinimalEditingMode="IsMinimalEditingMode"
                                           OnNodeAction="HandleNodeAction"
                                           OnChanged="() => OnChanged.InvokeAsync(node)"/>
                             break;
@@ -85,6 +96,8 @@
 
     private async Task OnItemsChanged((int oldIndex, int newIndex) indices)
     {
+        if (IsMinimalEditingMode) return;
+
         var (oldIndex, newIndex) = indices;
         if (oldIndex == newIndex) return;
 
@@ -94,18 +107,12 @@
         WorkInstructionNodes.RemoveAt(oldIndex);
 
         if (newIndex < WorkInstructionNodes.Count)
-        {
             WorkInstructionNodes.Insert(newIndex, itemToMove);
-        }
         else
-        {
             WorkInstructionNodes.Add(itemToMove);
-        }
 
         if (OnChanged.HasDelegate)
-        {
             await OnChanged.InvokeAsync();
-        }
     }
 
     private async Task HandleNodeAction((WorkInstructionNodeFormDTO node, string action) actionTuple)
@@ -116,15 +123,16 @@
 
         if (action is ("insertBefore" or "insertAfter"))
         {
+            if (IsMinimalEditingMode) return;
             if (OnNewNodeAt.HasDelegate)
             {
                 switch (action)
                 {
                     case "insertBefore":
-                        await OnNewNodeAt.InvokeAsync((node is PartNodeFormDTO? "part" : "step" , index));
+                        await OnNewNodeAt.InvokeAsync((node is PartNodeFormDTO ? "part" : "step", index));
                         break;
                     case "insertAfter":
-                        await OnNewNodeAt.InvokeAsync((node is PartNodeFormDTO? "part" : "step" , index+1));
+                        await OnNewNodeAt.InvokeAsync((node is PartNodeFormDTO ? "part" : "step", index + 1));
                         break;
                 }
             }
@@ -132,59 +140,51 @@
         else
         {
             await SaveAllEditorsContentAsync();
-            
+
             WorkInstructionNodes.Remove(node);
 
             switch (action)
             {
                 case "up":
-                    WorkInstructionNodes.Insert(Math.Max(0, index - 1), node);
+                    if (!IsMinimalEditingMode) WorkInstructionNodes.Insert(Math.Max(0, index - 1), node);
+                    else WorkInstructionNodes.Insert(index, node);
                     break;
                 case "down":
-                    WorkInstructionNodes.Insert(Math.Min(WorkInstructionNodes.Count, index + 1), node);
+                    if (!IsMinimalEditingMode) WorkInstructionNodes.Insert(Math.Min(WorkInstructionNodes.Count, index + 1), node);
+                    else WorkInstructionNodes.Insert(index, node);
                     break;
                 case "top":
-                    WorkInstructionNodes.Insert(0, node);
+                    if (!IsMinimalEditingMode) WorkInstructionNodes.Insert(0, node);
+                    else WorkInstructionNodes.Insert(index, node);
                     break;
                 case "bottom":
-                    WorkInstructionNodes.Add(node);
+                    if (!IsMinimalEditingMode) WorkInstructionNodes.Add(node);
+                    else WorkInstructionNodes.Insert(index, node);
                     break;
                 case "remove":
-                    // already removed above
-                    if (OnNodeRemoved.HasDelegate)
-                    {
+                    // already removed above — only proceed if not in minimal mode
+                    if (!IsMinimalEditingMode && OnNodeRemoved.HasDelegate)
                         await OnNodeRemoved.InvokeAsync(node);
-                    }
+                    else
+                        WorkInstructionNodes.Insert(index, node); // put it back
                     break;
             }
-            
+
             if (OnChanged.HasDelegate)
-            {
                 await OnChanged.InvokeAsync(node);
-            }
         }
     }
-    
+
     /// <summary>
-    /// Iterates over all tracked BlazoredTextEditor instances and saves their current HTML content
-    /// into the corresponding <see cref="Step"/> objects in <see cref="WorkInstructionNodes"/>.
+    /// Saves all in-progress Quill editor content back to the DTO model.
     /// </summary>
-    /// <remarks>
-    /// This ensures that any in-progress edits in the rich text editors are persisted
-    /// back to the underlying data model before performing actions like saving to the database
-    /// or navigating away from the page.
-    /// </remarks>
-    /// <returns>A task that represents the asynchronous save operation.</returns>
     public async Task SaveAllEditorsContentAsync()
     {
         foreach (var kvp in EditorRefs)
         {
             var stepClientId = kvp.Key;
             var editor = kvp.Value;
-
             var currentHtml = await editor.GetHTML();
-
-            // Find the node by ClientId
             var node = WorkInstructionNodes.FirstOrDefault(n => n is StepNodeFormDTO s && s.ClientId == stepClientId);
             if (node is StepNodeFormDTO step)
             {

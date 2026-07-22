@@ -51,4 +51,20 @@ public class ProductionLog : AuditableEntity
     /// A value of 1 indicates that the log was made from a single piece flow.
     /// </summary>
     public int FromBatchOf { get; set; }
+
+    /// <summary>
+    /// The original ID from a source system when this log was created via import.
+    /// Null for logs created natively. Used for duplicate detection on re-import.
+    /// </summary>
+    public int? ExternalId { get; set; }
+
+    /// <summary>
+    /// The username of the person who imported this log. Null for natively created logs.
+    /// </summary>
+    public string? ImportedBy { get; set; }
+
+    /// <summary>
+    /// The timestamp when this log was imported. Null for natively created logs.
+    /// </summary>
+    public DateTimeOffset? ImportedOn { get; set; }
 }

@@ -40,11 +40,17 @@ public interface IWorkInstructionUpdater
     /// The active <see cref="ApplicationContext"/> used for resolving
     /// related entities and tracking mutations.
     /// </param>
+    /// <param name="minimalMode">
+    /// When <c>true</c>, only scalar Step fields are updated; node structure (add, delete, reorder)
+    /// and PartNode associations are left unchanged. Pass <c>true</c> when the work instruction
+    /// has associated production logs.
+    /// </param>
     /// <returns>
     /// A task that completes when the mutation process has finished.
     /// </returns>
     Task ApplyAsync(
         WorkInstructionFormDTO dto,
         WorkInstruction entity,
-        ApplicationContext context);
+        ApplicationContext context,
+        bool minimalMode = false);
 }

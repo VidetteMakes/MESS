@@ -1,4 +1,4 @@
-﻿@using MESS.Services.DTOs.WorkInstructions.Version
+@using MESS.Services.DTOs.WorkInstructions.Version
 
 <div class="version-history-container">
     @if (IsOpen)
@@ -20,7 +20,7 @@
             <div class="spinner-border" role="status" aria-hidden="true"></div>
             <span class="visually-hidden">Loading...</span>
         </div>
-    } 
+    }
     @* No Versions Message *@
     else if (Versions == null || !Versions.Any())
     {
@@ -51,6 +51,13 @@
                             <div class="text-muted small">
                                 @version.Title
                             </div>
+
+                            @if (version.HasProductionLogs)
+                            {
+                                <div class="text-warning small">
+                                    <i class="bi bi-journal-text me-1"></i>Has production logs
+                                </div>
+                            }
                         </div>
 
                         <div class="d-flex gap-2">
@@ -68,11 +75,31 @@
                                     Restore
                                 </button>
 
-                                <button class="btn btn-sm btn-danger"
-                                        aria-label="Delete version @version.Version"
-                                        @onclick="() => OnDeleteClicked(version.Id)">
-                                    Delete
-                                </button>
+                                @if (version.HasProductionLogs && !IsAdministrator)
+                                {
+                                    <button class="btn btn-sm btn-danger"
+                                            disabled
+                                            title="This version has associated production logs — contact an Administrator to delete.">
+                                        Delete
+                                    </button>
+                                }
+                                else if (version.HasProductionLogs && IsAdministrator)
+                                {
+                                    <button class="btn btn-sm btn-danger"
+                                            aria-label="Delete version @version.Version (has logs)"
+                                            title="Delete version — requires export of associated logs"
+                                            @onclick="() => OnDeleteWithLogsClicked(version.Id)">
+                                        Delete
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-danger"
+                                            aria-label="Delete version @version.Version"
+                                            @onclick="() => OnDeleteClicked(version.Id)">
+                                        Delete
+                                    </button>
+                                }
                             }
                         </div>
                     </div>
@@ -82,34 +109,25 @@
     }
 </div>
 </div>
-    
+
 
 @code {
     /// <summary>
     /// Gets or sets a value indicating whether the version history sidebar is open or closed.
     /// </summary>
-    /// <remarks>
-    /// When <c>true</c>, the sidebar is visible to the user. When <c>false</c>, it is hidden.
-    /// This allows the parent component to control the sidebar's visibility.
-    /// </remarks>
     [Parameter] public bool IsOpen { get; set; } = false;
-    
+
     /// <summary>
     /// Event callback triggered when the user clicks the close button or otherwise toggles the sidebar's visibility.
     /// </summary>
-    /// <remarks>
-    /// The parent component should handle this event to update the <see cref="IsOpen"/> state accordingly.
-    /// This enables two-way interaction between the sidebar and its parent for open/close behavior.
-    /// </remarks>
     [Parameter] public EventCallback OnToggle { get; set; }
 
     /// <summary>
-    /// The id of the current (active) work instruction being edited. 
-    /// Displayed at the top of the version list.
+    /// The id of the current (active) work instruction being edited.
     /// </summary>
     [Parameter]
     public int? CurrentVersionId { get; set; }
-    
+
     /// <summary>
     /// The list of all historical versions of the current work instruction.
     /// </summary>
@@ -123,17 +141,31 @@
     public bool IsLoading { get; set; } = false;
 
     /// <summary>
+    /// True when the current user holds the Administrator role.
+    /// Controls whether the delete button is shown or disabled for versions with production logs.
+    /// </summary>
+    [Parameter]
+    public bool IsAdministrator { get; set; }
+
+    /// <summary>
     /// Event callback to restore a given version by ID.
     /// </summary>
     [Parameter]
     public EventCallback<int> OnRestore { get; set; }
 
     /// <summary>
-    /// Event callback to delete a given version by ID.
+    /// Event callback to delete a given version by ID (no associated production logs).
     /// </summary>
     [Parameter]
     public EventCallback<int> OnDelete { get; set; }
-    
+
+    /// <summary>
+    /// Event callback raised when an Administrator tries to delete a version that has production logs.
+    /// The parent is responsible for showing the export-before-delete flow.
+    /// </summary>
+    [Parameter]
+    public EventCallback<int> OnDeleteWithLogs { get; set; }
+
     private async Task OnToggleClicked()
     {
         if (OnToggle.HasDelegate)
@@ -150,5 +182,11 @@
     {
         if (OnDelete.HasDelegate)
             await OnDelete.InvokeAsync(versionId);
+    }
+
+    private async Task OnDeleteWithLogsClicked(int versionId)
+    {
+        if (OnDeleteWithLogs.HasDelegate)
+            await OnDeleteWithLogs.InvokeAsync(versionId);
     }
 }

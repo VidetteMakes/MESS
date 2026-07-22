@@ -67,4 +67,35 @@ public class PartNodeResolver : IPartNodeResolver
             node.PartDefinition = part;
         }
     }
+
+    /// <inheritdoc/>
+    public async Task<List<(string Context, string PartName)>> LookupPendingNodesAsync(
+        ApplicationContext context,
+        IEnumerable<WorkInstructionNode> nodes)
+    {
+        var missing = new List<(string Context, string PartName)>();
+
+        var partNodes = nodes
+            .OfType<PartNode>()
+            .Where(n => n.PartDefinition != null)
+            .ToList();
+
+        foreach (var node in partNodes)
+        {
+            var pending = node.PartDefinition!;
+
+            var part = await _partDefinitionResolver.LookupAsync(context, pending.Name);
+            if (part is null)
+            {
+                // PartNodes are top-level (not nested in steps); use position as the locating context.
+                missing.Add(($"Part node #{node.Position + 1}", pending.Name ?? string.Empty));
+                continue;
+            }
+
+            node.PartDefinitionId = part.Id;
+            node.PartDefinition = part;
+        }
+
+        return missing;
+    }
 }

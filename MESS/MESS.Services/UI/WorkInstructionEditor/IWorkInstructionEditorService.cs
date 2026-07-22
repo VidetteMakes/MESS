@@ -74,6 +74,14 @@ public interface IWorkInstructionEditorService
     /// or creating a new version in an existing version chain.
     /// </summary>
     EditorMode Mode { get; }
+
+    /// <summary>
+    /// True when the loaded instruction has associated production logs and the editor is in
+    /// <see cref="EditorMode.EditExisting"/> mode. Structural changes (add/delete/reorder nodes)
+    /// are disabled; non-structural Step field edits remain allowed.
+    /// Reset to <c>false</c> on any load other than <see cref="LoadForEditAsync"/>.
+    /// </summary>
+    bool IsMinimalEditingMode { get; }
     
     /// <summary>
     /// Gets a read-only collection of IDs representing the work instruction nodes

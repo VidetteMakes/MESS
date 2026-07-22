@@ -74,20 +74,51 @@ public class WorkInstructionUpdater : IWorkInstructionUpdater
     /// The active <see cref="ApplicationContext"/> used for resolving
     /// related entities and tracking changes.
     /// </param>
+    /// <param name="minimalMode">
+    /// When <c>true</c>, only editable Step fields are updated; node structure is left unchanged.
+    /// </param>
     /// <returns>
     /// A task that completes when the mutation process has finished.
     /// </returns>
+    /// <inheritdoc />
     public async Task ApplyAsync(
         WorkInstructionFormDTO dto,
         WorkInstruction entity,
-        ApplicationContext context)
+        ApplicationContext context,
+        bool minimalMode = false)
     {
         ApplyScalars(dto, entity);
 
         await SyncPartProducedAsync(dto, entity, context);
         await SyncProductsAsync(dto, entity, context);
 
-        await SyncNodes(dto.Nodes, entity, context);
+        if (minimalMode)
+            SyncNodesMinimal(dto.Nodes, entity);
+        else
+            await SyncNodes(dto.Nodes, entity, context);
+    }
+
+    // In minimal mode only update editable Step fields on existing nodes;
+    // no adds, removes, reorders, or PartNode changes.
+    private static void SyncNodesMinimal(
+        List<WorkInstructionNodeFormDTO> formNodes,
+        WorkInstruction entity)
+    {
+        foreach (var nodeDto in formNodes)
+        {
+            var existing = entity.Nodes.FirstOrDefault(n => n.Id == nodeDto.Id);
+            if (existing is Step step && nodeDto is StepNodeFormDTO stepDto)
+            {
+                step.Name = stepDto.Name;
+                step.Body = stepDto.Body;
+                step.DetailedBody = stepDto.DetailedBody;
+                step.PrimaryMedia = stepDto.PrimaryMedia.ToList();
+                step.SecondaryMedia = stepDto.SecondaryMedia.ToList();
+                step.NotesConfiguration = stepDto.NotesConfiguration;
+            }
+            // PartNodes: intentionally no-op — changing part associations while logs exist
+            // would corrupt part-traceability data on those logs.
+        }
     }
     
     private void ApplyScalars(WorkInstructionFormDTO dto, WorkInstruction entity)

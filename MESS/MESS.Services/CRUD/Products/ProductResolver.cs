@@ -69,4 +69,43 @@ public class ProductResolver : IProductResolver
 
         return results;
     }
+
+    /// <inheritdoc />
+    public async Task<(List<Product> Resolved, List<string> Missing)> LookupProductsAsync(
+        ApplicationContext context,
+        IEnumerable<string> productNames)
+    {
+        var normalizedNames = productNames
+            .Select(p => p.Trim())
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var resolved = new List<Product>();
+        var missing = new List<string>();
+
+        if (normalizedNames.Count == 0)
+            return (resolved, missing);
+
+        var upperNames = normalizedNames.Select(n => n.ToUpperInvariant()).ToList();
+
+        var existingProducts = await context.Products
+            .Include(p => p.PartDefinition)
+            .Where(p => upperNames.Contains(p.PartDefinition.Name.ToUpper()))
+            .ToListAsync();
+
+        var productLookup = existingProducts
+            .GroupBy(p => p.PartDefinition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in normalizedNames)
+        {
+            if (productLookup.TryGetValue(name, out var product))
+                resolved.Add(product);
+            else
+                missing.Add(name);
+        }
+
+        return (resolved, missing);
+    }
 }

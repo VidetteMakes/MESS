@@ -60,8 +60,8 @@ public class ApplicationUserService : IApplicationUserService
                 return false;
             }
 
-            // Matches login dropdown: locked when AspNetUsers.LockoutEnd is set (any value).
-            if (user.LockoutEnd != null)
+            // Respect Identity's temporary-lockout semantic: a past LockoutEnd is no longer locked.
+            if (await _userManager.IsLockedOutAsync(user))
             {
                 return false;
             }
@@ -135,8 +135,9 @@ public class ApplicationUserService : IApplicationUserService
     {
         try
         {
+            var now = DateTimeOffset.UtcNow;
             return await _context.Users
-                .Where(u => u.LockoutEnd == null)
+                .Where(u => !u.LockoutEnabled || u.LockoutEnd == null || u.LockoutEnd <= now)
                 .ToListAsync();
         }
         catch (Exception e)

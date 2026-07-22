@@ -34,6 +34,18 @@ public interface IWorkInstructionService
     public Task<bool> IsUnique(WorkInstruction workInstruction);
 
     /// <summary>
+    /// Async uniqueness check used by validators and save paths.
+    /// Returns <c>true</c> when no other record shares the same (Title, Version) pair.
+    /// The check is case-insensitive for Title and excludes the record's own ID so saving
+    /// without changing Title/Version does not produce a false positive.
+    /// </summary>
+    /// <remarks>
+    /// PostgreSQL NULL semantics: two rows with the same Title and Version = NULL are treated
+    /// as distinct by the unique index but are blocked here via EF LINQ null equality.
+    /// </remarks>
+    Task<bool> IsUniqueAsync(WorkInstruction workInstruction, CancellationToken ct = default);
+
+    /// <summary>
     /// Retrieves a List of WorkInstruction objects asynchronously
     /// </summary>
     /// <returns>List of WorkInstruction objects</returns>

@@ -1,0 +1,251 @@
+@page "/log-archive/import"
+@using MESS.Blazor.Components.Layout
+@using MESS.Services.CRUD.ProductionLogs
+@using MESS.Services.DTOs.ProductionLogs.Export
+@using MESS.Services.DTOs.ProductionLogs.Import
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.Json
+@layout PhoebeLayout
+@inject IProductionLogService ProductionLogService
+@inject NavigationManager NavManager
+@inject AuthenticationStateProvider AuthProvider
+@attribute [Authorize(Roles = "Administrator")]
+
+<PageTitle>Import Production Logs</PageTitle>
+
+<ErrorBoundary>
+    <ChildContent>
+        <AuthorizeView Roles="Administrator">
+            <NotAuthorized>
+                <div class="alert alert-danger">You are not authorized to view this page.</div>
+            </NotAuthorized>
+            <Authorized>
+                <div class="d-flex align-items-center gap-2 mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => NavManager.NavigateTo("/log-archive"))">
+                        <i class="bi bi-arrow-left me-1"></i>Back to Log Archive
+                    </button>
+                    <h3 class="m-0">Import Production Logs</h3>
+                </div>
+
+                <div class="card" style="max-width: 700px;">
+                    <div class="card-body">
+
+                        @* Step 1 – File picker *@
+                        <h6 class="fw-semibold">Step 1 — Select JSON export file</h6>
+                        <div class="mb-3">
+                            <InputFile class="form-control" accept=".json" OnChange="OnFileSelected" disabled="@(_step > 1)" />
+                        </div>
+
+                        @if (_parseError != null)
+                        {
+                            <div class="alert alert-danger py-2">@_parseError</div>
+                        }
+
+                        @* Step 2 – Validate *@
+                        @if (_step >= 2 && _import != null)
+                        {
+                            <hr />
+                            <h6 class="fw-semibold">Step 2 — Validate</h6>
+                            <p class="text-muted small">@_import.Logs.Count log(s) found in file. Click Validate to check referential integrity.</p>
+                            <button type="button" class="btn btn-sm btn-outline-primary mb-3"
+                                    @onclick="ValidateAsync"
+                                    disabled="@_busy">
+                                @if (_busy && _step == 2)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Validate
+                            </button>
+                        }
+
+                        @* Validation results *@
+                        @if (_validationResult != null)
+                        {
+                            @if (_validationResult.IsValid)
+                            {
+                                <div class="alert alert-success py-2">
+                                    <i class="bi bi-check-circle-fill me-1"></i>Validation passed — ready to import.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="alert alert-danger py-2">
+                                    <strong>@_validationResult.Errors.Count error(s) found. No data will be written until all errors are resolved.</strong>
+                                </div>
+                                <div class="table-responsive" style="max-height:260px;overflow-y:auto;">
+                                    <table class="table table-sm table-bordered small mb-0">
+                                        <thead class="table-danger">
+                                        <tr>
+                                            <th>Row</th><th>Field</th><th>Value</th><th>Reason</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody>
+                                        @foreach (var err in _validationResult.Errors)
+                                        {
+                                            <tr>
+                                                <td>@err.Row</td>
+                                                <td>@err.Field</td>
+                                                <td><code>@err.Value</code></td>
+                                                <td>@err.Reason</td>
+                                            </tr>
+                                        }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        }
+
+                        @* Step 3 – Import *@
+                        @if (_step >= 3 && _validationResult?.IsValid == true)
+                        {
+                            <hr />
+                            <h6 class="fw-semibold">Step 3 — Import</h6>
+                            <button type="button" class="btn btn-sm btn-success"
+                                    @onclick="ImportAsync"
+                                    disabled="@_busy">
+                                @if (_busy && _step == 3)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                Import Logs
+                            </button>
+                        }
+
+                        @if (_importResult != null)
+                        {
+                            <div class="alert alert-success mt-3 py-2">
+                                <i class="bi bi-check-circle-fill me-1"></i>
+                                Import complete: <strong>@_importResult.CreatedCount</strong> log(s) created.
+                                @if (_importResult.SkippedDuplicateCount > 0)
+                                {
+                                    <span class="ms-2 text-muted">@_importResult.SkippedDuplicateCount duplicate(s) skipped.</span>
+                                }
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="Reset">Import another file</button>
+                        }
+
+                        @if (_importError != null)
+                        {
+                            <div class="alert alert-danger mt-3 py-2">@_importError</div>
+                        }
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </ChildContent>
+    <ErrorContent Context="ex">
+        <div class="alert alert-danger">An error occurred: @ex.Message</div>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    private int _step = 1;
+    private bool _busy;
+    private ProductionLogExportDto? _import;
+    private ProductionLogImportValidationResult? _validationResult;
+    private ProductionLogImportResult? _importResult;
+    private string? _parseError;
+    private string? _importError;
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _parseError = null;
+        _import = null;
+        _validationResult = null;
+        _importResult = null;
+        _importError = null;
+        _step = 1;
+
+        var file = e.File;
+        if (file == null) return;
+
+        if (file.Size > 50 * 1024 * 1024)
+        {
+            _parseError = "File exceeds the 50 MB limit.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            _import = await JsonSerializer.DeserializeAsync<ProductionLogExportDto>(
+                stream,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (_import == null || _import.Logs.Count == 0)
+            {
+                _parseError = "Import file contains no logs or could not be parsed.";
+                return;
+            }
+
+            _step = 2;
+        }
+        catch (JsonException)
+        {
+            _parseError = "File is not a valid export file.";
+        }
+        catch (Exception ex)
+        {
+            _parseError = $"Could not read file: {ex.Message}";
+        }
+    }
+
+    private async Task ValidateAsync()
+    {
+        if (_import == null) return;
+
+        _busy = true;
+        _validationResult = null;
+        StateHasChanged();
+
+        try
+        {
+            _validationResult = await ProductionLogService.ValidateImportAsync(_import);
+            if (_validationResult.IsValid)
+                _step = 3;
+        }
+        catch (Exception ex)
+        {
+            _parseError = $"Validation error: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_import == null || _validationResult?.IsValid != true) return;
+
+        _busy = true;
+        _importError = null;
+        StateHasChanged();
+
+        try
+        {
+            var auth = await AuthProvider.GetAuthenticationStateAsync();
+            var username = auth.User.Identity?.Name ?? "system";
+            _importResult = await ProductionLogService.ImportAsync(_import, username);
+        }
+        catch (Exception ex)
+        {
+            _importError = $"Import failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void Reset()
+    {
+        _step = 1;
+        _import = null;
+        _validationResult = null;
+        _importResult = null;
+        _parseError = null;
+        _importError = null;
+    }
+}

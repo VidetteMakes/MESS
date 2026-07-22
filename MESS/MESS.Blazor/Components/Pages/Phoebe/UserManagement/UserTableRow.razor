@@ -262,6 +262,8 @@
 
             if (result.Succeeded)
             {
+                await UserManager.SetLockoutEndDateAsync(User, null);
+                await UserManager.ResetAccessFailedCountAsync(User);
                 _newPassword = "";
                 _confirmPassword = "";
                 ToastService.ShowSuccess($"Password updated for {User.UserName ?? User.Email}.");

@@ -8,6 +8,7 @@
 @using Serilog
 @using MESS.Blazor.Components.Pages.Phoebe.Product.ProductTableRow.WorkInstructionAssociation
 @using MESS.Blazor.Components.Pages.Phoebe.Product.ProductTableRow
+@using MESS.Blazor.Components.Pages.Phoebe.Product
 @using MESS.Services.CRUD.WorkInstructions
 @using MESS.Services.CRUD.Products
 @inject IProductService ProductService
@@ -16,19 +17,22 @@
 
 <PageTitle>Products</PageTitle>
 
+<div class="d-flex justify-content-between my-2 align-items-center" style="flex-direction: row">
+    <h3 class="m-0">Products</h3>
+    <div class="flex-grow-1"/>
+    <button class="btn btn-primary me-2" @onclick="OpenDesignateDialog">
+        <i class="bi bi-plus-lg me-1"></i> Designate Part as Product
+    </button>
+    <input type="text" class="form-control w-auto" placeholder="Search..."
+           @bind="SearchString" @bind:event="oninput" />
+</div>
+
 @if (Products.Count == 0)
 {
-    <h3>Product List</h3>
-    <p>No products currently available.</p>
+    <p>No products currently available. Use <strong>Designate Part as Product</strong> to add one.</p>
 }
 else
 {
-    <div class="d-flex justify-content-between my-2" style="flex-direction: row">
-        <h3>Products</h3>
-        <div class="flex-grow-1"/>
-        <input type="text" class="form-control w-auto" placeholder="Search..."
-               @bind="SearchString" @bind:event="oninput"  />
-    </div>
     <MudTable @ref="_table"
               T="Product"
               ServerData="ServerReload"
@@ -37,7 +41,7 @@ else
               Class="border rounded-3 pt-1"
               TableClass="table table-striped table-hover align-top"
               CellClass="align-top">
-        
+
         <HeaderContent>
             <MudTh><MudTableSortLabel SortLabel="name_field" SortBy="new Func<Product, object>(x => x.PartDefinition.Name)"><strong>Name</strong></MudTableSortLabel></MudTh>
             <MudTh><strong>Active</strong></MudTh>
@@ -45,10 +49,10 @@ else
             <MudTh><strong>Actions</strong></MudTh>
         </HeaderContent>
         <RowTemplate Context="product">
-            <ProductTableRow 
-                Product="product" 
-                Instructions="_associatedInstructionsMap.ContainsKey(product.Id) 
-                    ? _associatedInstructionsMap[product.Id] 
+            <ProductTableRow
+                Product="product"
+                Instructions="_associatedInstructionsMap.ContainsKey(product.Id)
+                    ? _associatedInstructionsMap[product.Id]
                     : new List<WorkInstruction>()"
                 SelectedInstructionIds="GetSelectedIds(product.Id)"
                 SelectedInstructionIdsChanged="@GetSelectedIdsChangedCallback(product.Id)"
@@ -57,47 +61,32 @@ else
                 OnSubmit="@SubmitProductCallback"
                 OnDeleteRequested="@HandleDeleteProductAsync" />
         </RowTemplate>
-        <FooterContent>
-            <ProductTableRow
-                Product="_newProduct"
-                Instructions="[]"
-                SelectedInstructionIds="[]"
-                SelectedInstructionIdsChanged="@NoOpSelectedIdsChangedCallback"
-                OnAddInstructions="@EventCallback.Empty"
-                OnRemoveInstructions="@NoOpRemoveInstructionsCallback"
-                OnSubmit="@SubmitProductCallback"/> 
-        </FooterContent>
         <PagerContent>
-            <MudTablePager InfoFormat="@InfoFormat()" 
-                           HorizontalAlignment="HorizontalAlignment.Center" 
+            <MudTablePager InfoFormat="@InfoFormat()"
+                           HorizontalAlignment="HorizontalAlignment.Center"
                            RowsPerPageString="Products per Page"/>
         </PagerContent>
     </MudTable>
-    
-    <AddWorkInstructionDialog 
+
+    <AddWorkInstructionDialog
         Visible="@_addDialogVisible"
         VisibleChanged="@OnVisibleChanged"
         Instructions="@_nonAssociatedInstructions"
         OnAdd="@AddInstructionsCallback" />
 }
 
+<DesignatePartDialog @bind-Visible="_designateDialogVisible"
+                     OnDesignated="HandleDesignated" />
+
 @code {
     private List<Product> Products { get; set; } = new();
-    private Product _newProduct = new()
-    {
-        IsActive = true,
-        PartDefinition = new PartDefinition
-        {
-            Name = "",
-            Number = ""
-        }
-    };
     private List<WorkInstruction>? _allInstructions;
     private Dictionary<int, List<int>> SelectedInstructionMap { get; set; } = new();
     private readonly Dictionary<int, EventCallback<List<int>>> _selectedIdsChangedCallbacks = new();
     private Dictionary<int, List<WorkInstruction>> _associatedInstructionsMap = new();
 
     private bool _addDialogVisible = false;
+    private bool _designateDialogVisible = false;
     private List<WorkInstruction> _nonAssociatedInstructions = [];
     private int CurrentProductId { get; set; }
 
@@ -186,43 +175,40 @@ else
 
     private async Task LoadProducts()
     {
-        _newProduct = new Product
-        {
-            IsActive = true,
-            PartDefinition = new PartDefinition
-            {
-                Name = "",
-                Number = ""
-            }
-        };
         Products = (await ProductService.GetAllAsync()).ToList();
+    }
+
+    private void OpenDesignateDialog() => _designateDialogVisible = true;
+
+    private async Task HandleDesignated()
+    {
+        await GrabServerData();
+        await _table.ReloadServerData();
     }
 
     private async Task HandleSubmitProduct(Product product)
     {
         try
         {
-            Log.Information("Submitting product: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
+            Log.Information("Updating product: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
 
-            if (product.Id == 0)
-            {
-                await ProductService.CreateAsync(product);
-                ToastService.ShowSuccess($"Product '{product.PartDefinition.Name}' created successfully!");
-            }
-            else
-            {
-                await ProductService.UpdateProductAsync(product);
-                ToastService.ShowSuccess($"Product '{product.PartDefinition.Name}' updated successfully!");
-            }
+            await ProductService.UpdateProductAsync(product);
+            ToastService.ShowSuccess($"Product '{product.PartDefinition.Name}' updated successfully!");
+
             await GrabServerData();
             await _table.ReloadServerData();
 
-            Log.Information("Product submitted successfully: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
+            Log.Information("Product updated successfully: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // e.g. attempted to edit part details here
+            ToastService.ShowError(ex.Message);
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error occurred while submitting product: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
-            ToastService.ShowError($"Error submitting product '{product.PartDefinition.Name}'. Please try again.");
+            Log.Error(ex, "Error occurred while updating product: {ProductName} (ID: {ProductId})", product.PartDefinition.Name, product.Id);
+            ToastService.ShowError($"Error updating product '{product.PartDefinition.Name}'. Please try again.");
         }
     }
     
@@ -277,12 +263,6 @@ else
 
     private EventCallback<Product> SubmitProductCallback =>
         EventCallback.Factory.Create<Product>(this, HandleSubmitProduct);
-
-    private EventCallback<List<int>> NoOpSelectedIdsChangedCallback =>
-        EventCallback.Factory.Create<List<int>>(this, _ => Task.CompletedTask);
-
-    private EventCallback<List<int>> NoOpRemoveInstructionsCallback =>
-        EventCallback.Factory.Create<List<int>>(this, _ => Task.CompletedTask);
 
     private EventCallback<List<int>> AddInstructionsCallback =>
         EventCallback.Factory.Create<List<int>>(this, OnAddInstructions);

@@ -35,6 +35,9 @@ public sealed class ProductionLogArchiveQuery
     /// <summary>Work instruction filter.</summary>
     public string? FilterWorkInstruction { get; set; }
 
+    /// <summary>Exact work instruction ID filter — takes precedence over <see cref="FilterWorkInstruction"/> when set.</summary>
+    public int? FilterWorkInstructionId { get; set; }
+
     /// <summary>Produced part filter.</summary>
     public string? FilterPartProduced { get; set; }
 
@@ -58,4 +61,7 @@ public sealed class ProductionLogArchiveQuery
 
     /// <summary>Modified by filter.</summary>
     public string? FilterModifiedBy { get; set; }
+
+    /// <summary>Exact operator (user) ID filter. When set, only logs belonging to this operator are returned.</summary>
+    public string? FilterOperatorId { get; set; }
 }

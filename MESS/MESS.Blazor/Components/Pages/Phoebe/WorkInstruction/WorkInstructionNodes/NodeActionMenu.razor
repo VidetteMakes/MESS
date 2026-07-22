@@ -7,15 +7,37 @@
     {
         <div class="dropdown-backdrop" @onclick="CloseDropdown"></div>
         <div class="dropdown-menu-custom">
-            <button class="dropdown-item" @onclick="() => InvokeAction(Up)">Move Up</button>
-            <button class="dropdown-item" @onclick="() => InvokeAction(Down)">Move Down</button>
-            <button class="dropdown-item" @onclick="() => InvokeAction(Top)">Move to Top</button>
-            <button class="dropdown-item" @onclick="() => InvokeAction(Bottom)">Move to Bottom</button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item" @onclick="() => InvokeAction(InsertBefore)">Insert New Before</button>
-            <button class="dropdown-item" @onclick="() => InvokeAction(InsertAfter)">Insert New After</button>
-            <div class="dropdown-divider"></div>
-            <button class="dropdown-item text-danger" @onclick="() => InvokeAction(Remove)">Remove</button>
+            @if (IsMinimalEditingMode)
+            {
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Move Up</button>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Move Down</button>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Move to Top</button>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Move to Bottom</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Insert New Before</button>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Insert New After</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item text-muted" disabled
+                        title="Disabled — production logs exist for this instruction.">Remove</button>
+            }
+            else
+            {
+                <button class="dropdown-item" @onclick="() => InvokeAction(Up)">Move Up</button>
+                <button class="dropdown-item" @onclick="() => InvokeAction(Down)">Move Down</button>
+                <button class="dropdown-item" @onclick="() => InvokeAction(Top)">Move to Top</button>
+                <button class="dropdown-item" @onclick="() => InvokeAction(Bottom)">Move to Bottom</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item" @onclick="() => InvokeAction(InsertBefore)">Insert New Before</button>
+                <button class="dropdown-item" @onclick="() => InvokeAction(InsertAfter)">Insert New After</button>
+                <div class="dropdown-divider"></div>
+                <button class="dropdown-item text-danger" @onclick="() => InvokeAction(Remove)">Remove</button>
+            }
         </div>
     }
 </div>
@@ -28,6 +50,13 @@
     [Parameter, EditorRequired]
     public EventCallback<string> OnAction { get; set; }
 
+    /// <summary>
+    /// When <c>true</c>, all structural actions are rendered disabled with a tooltip explaining
+    /// that production logs exist for this instruction.
+    /// </summary>
+    [Parameter]
+    public bool IsMinimalEditingMode { get; set; }
+
     private bool IsMenuOpen { get; set; } = false;
 
     private const string Up = "up";
@@ -38,23 +67,14 @@
     private const string InsertBefore = "insertBefore";
     private const string InsertAfter = "insertAfter";
 
-    private void ToggleDropdown()
-    {
-        IsMenuOpen = !IsMenuOpen;
-    }
+    private void ToggleDropdown() => IsMenuOpen = !IsMenuOpen;
 
-    private void CloseDropdown()
-    {
-        IsMenuOpen = false;
-    }
+    private void CloseDropdown() => IsMenuOpen = false;
 
     private async Task InvokeAction(string action)
     {
         IsMenuOpen = false;
-
         if (OnAction.HasDelegate)
-        {
             await OnAction.InvokeAsync(action);
-        }
     }
 }

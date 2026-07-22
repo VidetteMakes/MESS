@@ -3,9 +3,23 @@
 @using MESS.Blazor.Components.Pages.Phoebe.Product.ProductTableRow.WorkInstructionAssociation
 @using DialogParameters = Microsoft.FluentUI.AspNetCore.Components.DialogParameters
 @inject Microsoft.FluentUI.AspNetCore.Components.IDialogService DialogService
+@inject NavigationManager NavManager
 
 <MudTd DataLabel="Name">
-    <InputText id="name" @bind-Value="Product.PartDefinition.Name" class="form-control" placeholder="Enter product name" @oninput="OnInputChanged"/>
+    <div class="d-flex align-items-center gap-2">
+        <div>
+            <div class="fw-semibold">@Product.PartDefinition.Name</div>
+            @if (!string.IsNullOrWhiteSpace(Product.PartDefinition.Number))
+            {
+                <div class="text-muted small">@Product.PartDefinition.Number</div>
+            }
+        </div>
+        <button class="btn btn-sm btn-link p-0"
+                title="Edit part details in Part Management"
+                @onclick="NavigateToPartManagement">
+            <i class="bi bi-box-arrow-up-right"></i>
+        </button>
+    </div>
 </MudTd>
 <MudTd DataLabel="Active">
     <InputCheckbox id="isActive"
@@ -15,7 +29,7 @@
                    class="form-check-input" />
 </MudTd>
 <MudTd DataLabel="Work Instruction">
-    <WorkInstructionSelector 
+    <WorkInstructionSelector
         Instructions="Instructions"
         SelectedInstructionIds="SelectedInstructionIds"
         SelectedInstructionIdsChanged="SelectedInstructionIdsChanged"
@@ -23,27 +37,18 @@
         OnRemoveSelected="OnRemoveInstructions" />
 </MudTd>
 <MudTd DataLabel="Actions">
-    @if (!IsNewProduct)
-    {
-        <div class="save-button-container">
-            <button class="btn btn-sm btn-success" @onclick="HandleSubmit" disabled="@isSaving" title="Save">
-                <i class="bi bi-floppy"></i>
-                @if (IsDirty)
-                {
-                    <span class="red-dot"></span>
-                }
-            </button>
-        </div>
-        <button class="btn btn-sm btn-danger ms-2" @onclick="ShowDeleteConfirmation">
-            <i class="bi bi-trash" />
+    <div class="save-button-container">
+        <button class="btn btn-sm btn-success" @onclick="HandleSubmit" disabled="@isSaving" title="Save">
+            <i class="bi bi-floppy"></i>
+            @if (IsDirty)
+            {
+                <span class="red-dot"></span>
+            }
         </button>
-    }
-    else
-    {
-        <button class="btn btn-sm btn-primary" @onclick="HandleSubmit" disabled="@isSaving">
-            <i class="bi bi-plus-lg"></i>
-        </button>
-    }
+    </div>
+    <button class="btn btn-sm btn-danger ms-2" @onclick="ShowDeleteConfirmation">
+        <i class="bi bi-trash" />
+    </button>
 </MudTd>
 
 @code {
@@ -96,15 +101,12 @@
     [Parameter]
     public EventCallback<Product> OnSubmit { get; set; }
 
-    private bool IsNewProduct => Product.Id == 0;
     private bool isSaving = false;
     private bool IsDirty { get; set; } = false;
-    
 
-    
-    private void OnInputChanged(ChangeEventArgs e)
+    private void NavigateToPartManagement()
     {
-        IsDirty = true;
+        NavManager.NavigateTo($"/parts?id={Product.PartDefinition.Id}");
     }
 
     private async Task HandleSubmit()

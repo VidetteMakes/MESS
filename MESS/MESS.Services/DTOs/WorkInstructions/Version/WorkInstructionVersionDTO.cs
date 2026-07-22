@@ -57,5 +57,11 @@ namespace MESS.Services.DTOs.WorkInstructions.Version
         /// who last modified this version.
         /// </summary>
         public string? LastModifiedBy { get; init; }
+
+        /// <summary>
+        /// True when at least one production log references this specific work instruction version.
+        /// Used to gate deletion: Technicians cannot delete a version with associated logs.
+        /// </summary>
+        public bool HasProductionLogs { get; init; }
     }
 }

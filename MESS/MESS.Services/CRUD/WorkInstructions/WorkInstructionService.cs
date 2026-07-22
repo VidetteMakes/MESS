@@ -5,6 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Serilog;
 using MESS.Services.CRUD.ProductionLogs;
 using MESS.Services.CRUD.Products;
+using MESS.Services.CRUD.WorkInstructions.Import;
 using MESS.Services.DTOs.WorkInstructions.Form;
 using MESS.Services.DTOs.WorkInstructions.Summary;
 using MESS.Services.DTOs.WorkInstructions.Version;
@@ -105,7 +106,7 @@ public class WorkInstructionService : IWorkInstructionService
             {
                 return false;
             }
-            
+
             if (isUniqueCount is 0)
             {
                 return true;
@@ -118,6 +119,18 @@ public class WorkInstructionService : IWorkInstructionService
             Log.Warning("Unable to determine if WorkInstruction with Title: {Title}, and Version: {Version} is unique. Exception thrown: {Exception}", workInstruction.Title, workInstruction.Version, e.ToString());
             return false;
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsUniqueAsync(WorkInstruction wi, CancellationToken ct = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(ct);
+        // Case-insensitive title, exact version, exclude own row so saving without change is always valid.
+        return !await db.WorkInstructions.AnyAsync(
+            x => x.Id != wi.Id
+                 && x.Title.ToLower() == wi.Title.ToLower()
+                 && x.Version == wi.Version,
+            ct);
     }
 
     /// <summary>
@@ -427,7 +440,8 @@ public class WorkInstructionService : IWorkInstructionService
                     Version = w.Version,
                     Title = w.Title,
                     LastModifiedOn = w.LastModifiedOn,
-                    LastModifiedBy = w.LastModifiedBy
+                    LastModifiedBy = w.LastModifiedBy,
+                    HasProductionLogs = context.ProductionLogs.Any(l => l.WorkInstructionId == w.Id)
                 })
                 .ToListAsync();
 
@@ -476,55 +490,94 @@ public class WorkInstructionService : IWorkInstructionService
     public async Task<bool> CreateAsync(WorkInstructionFormDTO dto)
     {
         await using var context = await _contextFactory.CreateDbContextAsync();
+        var strategy = context.Database.CreateExecutionStrategy();
 
-        try
+        return await strategy.ExecuteAsync(async () =>
         {
-            // Build base entity from mapper
-            var workInstruction = dto.ToNewEntity();
+            await using var transaction = await context.Database.BeginTransactionAsync();
 
-            // Validate entity
-            var validator = new WorkInstructionValidator();
-            var validationResult = await validator.ValidateAsync(workInstruction);
+            try
+            {
+                // Build base entity from mapper
+                var workInstruction = dto.ToNewEntity();
 
-            if (!validationResult.IsValid)
+                // Validate entity
+                var validator = new WorkInstructionValidator();
+                var validationResult = await validator.ValidateAsync(workInstruction);
+
+                if (!validationResult.IsValid)
+                    return false;
+
+                // Uniqueness check (app-level, before the DB unique index can fire)
+                if (!await IsUniqueAsync(workInstruction))
+                    throw new WorkInstructionNotUniqueException(workInstruction.Title, workInstruction.Version);
+
+                // Lookup-only resolution. New PartDefinitions / Products are NOT created here:
+                // every referenced part/product must already exist. Missing refs are aggregated
+                // and reported together so the admin can resolve them in one pass.
+                var resolution = new WorkInstructionImportResolutionResult();
+
+                // 1. Produced part — must exist (if specified)
+                if (!string.IsNullOrWhiteSpace(dto.ProducedPartName))
+                {
+                    var producedPart = await _partDefinitionResolver.LookupAsync(context, dto.ProducedPartName);
+                    if (producedPart is null)
+                        resolution.MissingPartDefinitions.Add(dto.ProducedPartName.Trim());
+                    else
+                        workInstruction.PartProduced = producedPart;
+                }
+
+                // 2. Products — must exist
+                var (products, missingProducts) =
+                    await _productResolver.LookupProductsAsync(context, dto.ProductNames);
+                resolution.MissingProducts.AddRange(missingProducts);
+                workInstruction.Products = products;
+
+                // 3. PartNodes — must exist
+                var missingNodes = await _partNodeResolver.LookupPendingNodesAsync(context, workInstruction.Nodes);
+                resolution.MissingPartNodeParts.AddRange(missingNodes);
+
+                if (resolution.HasErrors)
+                    throw new WorkInstructionImportReferenceException(resolution);
+
+                // Default new WorkInstructions to active and latest since this is a new creation (not a version update)
+                workInstruction.IsActive = true;
+                workInstruction.IsLatest = true;
+
+                await context.WorkInstructions.AddAsync(workInstruction);
+                await context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                dto.ApplyPersistedIds(workInstruction);
+
+                ClearWorkInstructionCaches();
+
+                Log.Information(
+                    "Successfully created WorkInstruction with ID: {Id}",
+                    workInstruction.Id);
+
+                return true;
+            }
+            catch (WorkInstructionNotUniqueException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+            catch (WorkInstructionImportReferenceException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+            catch (Exception e)
+            {
+                await transaction.RollbackAsync();
+                Log.Warning(
+                    "Exception thrown when creating WorkInstruction. Exception: {Exception}",
+                    e);
+
                 return false;
-
-            // Resolve produced part
-            workInstruction.PartProduced =
-                await _partDefinitionResolver.ResolveAsync(context, dto.ProducedPartName, null);
-
-            // Resolve Products (internally calls the part definition resolver)
-            workInstruction.Products =
-                await _productResolver.ResolveProductsAsync(context, dto.ProductNames);
-
-            // Resolve all PartNodes via PartNodeResolver
-            await _partNodeResolver.ResolvePendingNodesAsync(context, workInstruction.Nodes);
-
-            // Default new WorkInstructions to active and latest since this is a new creation (not a version update)
-            workInstruction.IsActive = true;
-            workInstruction.IsLatest = true;
-
-            await context.WorkInstructions.AddAsync(workInstruction);
-            await context.SaveChangesAsync();
-
-            dto.ApplyPersistedIds(workInstruction);
-
-            ClearWorkInstructionCaches();
-
-            Log.Information(
-                "Successfully created WorkInstruction with ID: {Id}",
-                workInstruction.Id);
-
-            return true;
-        }
-        catch (Exception e)
-        {
-            Log.Warning(
-                "Exception thrown when creating WorkInstruction. Exception: {Exception}",
-                e);
-
-            return false;
-        }
+            }
+        });
     }
     
     /// <inheritdoc />
@@ -841,10 +894,11 @@ public class WorkInstructionService : IWorkInstructionService
                 if (existing == null)
                     return false;
 
-                if (!await ValidateUniquenessAsync(dto, existing))
-                    return false;
-                
-                await _workInstructionUpdater.ApplyAsync(dto, existing, context);
+                // Throws WorkInstructionNotUniqueException when Title+Version clashes with another record.
+                await ValidateUniquenessAsync(dto, existing);
+
+                var minimalMode = !await IsEditable(existing);
+                await _workInstructionUpdater.ApplyAsync(dto, existing, context, minimalMode);
                 
                 await context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -855,26 +909,34 @@ public class WorkInstructionService : IWorkInstructionService
 
                 return true;
             }
+            catch (WorkInstructionNotUniqueException)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 Log.Warning("Error updating WorkInstruction {Id}: {Exception}", dto.Id, ex);
                 return false;
             }
         });
     }
     
-    private async Task<bool> ValidateUniquenessAsync(
+    private async Task ValidateUniquenessAsync(
         WorkInstructionFormDTO dto,
         WorkInstruction existing)
     {
+        // Fast-path: nothing changed, no DB round-trip needed.
         if (string.Equals(existing.Title, dto.Title, StringComparison.OrdinalIgnoreCase)
             && string.Equals(existing.Version, dto.Version, StringComparison.OrdinalIgnoreCase))
-            return true;
+            return;
 
-        var uniquenessCheck = dto.ToNewEntity();
-        uniquenessCheck.Id = existing.Id;
+        var check = dto.ToNewEntity();
+        check.Id = existing.Id;
 
-        return await IsUnique(uniquenessCheck);
+        if (!await IsUniqueAsync(check))
+            throw new WorkInstructionNotUniqueException(check.Title, check.Version);
     }
     
     /// <summary>

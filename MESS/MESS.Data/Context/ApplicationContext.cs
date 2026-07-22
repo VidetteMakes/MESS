@@ -39,6 +39,11 @@ public class ApplicationContext
     /// DbSet for ProductionLogs.
     /// </summary>
     public virtual DbSet<ProductionLog> ProductionLogs { get; set; } = null!;
+
+    /// <summary>
+    /// DbSet for ProductionLogDeletionAudits.
+    /// </summary>
+    public virtual DbSet<ProductionLogDeletionAudit> ProductionLogDeletionAudits { get; set; } = null!;
     
     /// <summary>
     /// DbSet for ProductionLogSteps.
@@ -141,6 +146,14 @@ public class ApplicationContext
             .WithMany()
             .HasForeignKey("WorkInstructionId")
             .IsRequired(false);
+
+        modelBuilder.Entity<ProductionLog>()
+            .HasIndex(p => p.ExternalId)
+            .HasFilter("\"ExternalId\" IS NOT NULL");
+
+        modelBuilder.Entity<ProductionLogDeletionAudit>()
+            .Property(a => a.LogIds)
+            .HasColumnType("integer[]");
         
         modelBuilder.Entity<ProductionLogPart>()
             .HasKey(plp => new { plp.ProductionLogId, plp.SerializablePartId, plp.OperationType });

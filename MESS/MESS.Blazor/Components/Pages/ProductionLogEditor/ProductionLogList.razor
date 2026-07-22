@@ -1,8 +1,12 @@
 @page "/production-logs"
 @using MESS.Blazor.Components.Layout
 @using MESS.Blazor.Components.Dialogs
+@using MESS.Blazor.Components.Dialogs.ProductionLog
 @using MESS.Services.CRUD.ProductionLogs
+@using MESS.Services.DTOs.ProductionLogs.Archive
 @using MESS.Services.DTOs.ProductionLogs.Summary
+@using MESS.Services.UI.ExportToken
+@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using SortDirection = MudBlazor.SortDirection
 @using HorizontalAlignment = MudBlazor.HorizontalAlignment
@@ -11,6 +15,7 @@
 @layout PhoebeLayout
 @inject Microsoft.FluentUI.AspNetCore.Components.IDialogService DialogService
 @inject IProductionLogService ProductionLogService
+@inject IExportTokenService ExportTokenService
 @inject AuthenticationStateProvider AuthProvider
 @inject NavigationManager NavManager
 
@@ -19,13 +24,55 @@
 <ErrorBoundary>
     <ChildContent>
         <AuthorizeView Roles="Operator, Technician, Administrator">
-            <Authorizing>
-                <p>Authorizing...</p>
-            </Authorizing>
+            <Authorizing><p>Authorizing...</p></Authorizing>
             <NotAuthorized>
                 <div class="alert alert-warning">You are not authorized to view this page.</div>
             </NotAuthorized>
             <Authorized>
+                @* Toolbar *@
+                <div class="d-flex flex-wrap align-items-center gap-2 my-2">
+                    <h3 class="m-0">My Logs</h3>
+                    <div class="flex-grow-1"></div>
+
+                    @if (_deleteError != null)
+                    {
+                        <div class="alert alert-danger py-1 px-2 mb-0 small">@_deleteError</div>
+                    }
+                    @if (_deleteSuccess != null)
+                    {
+                        <div class="alert alert-success py-1 px-2 mb-0 small">@_deleteSuccess</div>
+                    }
+
+                    <button class="btn btn-secondary btn-sm" @onclick="NavigateToCreate">
+                        <i class="bi bi-arrow-left me-1"></i>To Production
+                    </button>
+
+                    @* Admin-only actions *@
+                    <AuthorizeView Roles="Administrator">
+                        <Authorized Context="adminCtx">
+                            <button class="btn btn-sm btn-outline-secondary"
+                                    @onclick="@(() => NavManager.NavigateTo("/log-archive/import"))">
+                                <i class="bi bi-upload me-1"></i>Import Logs
+                            </button>
+
+                            <button class="btn btn-sm btn-outline-primary"
+                                    @onclick="OpenExportDialog"
+                                    disabled="@(IsLoading || ProductionLogs.Count == 0)">
+                                <i class="bi bi-download me-1"></i>Export
+                            </button>
+
+                            <button class="btn btn-sm btn-outline-danger"
+                                    @onclick="OpenPreDeleteDialog"
+                                    disabled="@(IsLoading || _selectedItems.Count == 0)">
+                                <i class="bi bi-trash me-1"></i>Delete (@_selectedItems.Count)
+                            </button>
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <input type="text" class="form-control w-auto" placeholder="Search..."
+                           @bind="SearchString" @bind:event="oninput" />
+                </div>
+
                 @if (IsLoading)
                 {
                     <div class="text-center my-5">
@@ -35,25 +82,17 @@
                 }
                 else if (ProductionLogs.Any())
                 {
-                    <div class="d-flex justify-content-between my-2" style="flex-direction: row">
-                        <h3>My Logs</h3>
-                        <div class="flex-grow-1"/>
-                        <button class="btn btn-secondary me-4" @onclick="NavigateToCreate">
-                            <i class="bi bi-arrow-left"></i> To Production
-                        </button>
-                        <input type="text" class="form-control w-auto" placeholder="Search..."
-                               @bind="SearchString" @bind:event="oninput"  />
-                    </div>
-                    
                     <MudTable @ref="_table"
                               T="ProductionLogSummaryDTO"
                               ServerData="ServerReload"
                               Loading="IsLoading"
                               Hover="true"
                               FixedHeader="true"
+                              MultiSelection="true"
+                              @bind-SelectedItems="_selectedItems"
                               Class="border rounded-3 pt-1"
                               TableClass="table table-striped table-hover">
-                  
+
                         <HeaderContent>
                             <MudTh><MudTableSortLabel SortLabel="product_field" SortBy="new Func<ProductionLogSummaryDTO, object>(x => x.ProductName ?? string.Empty)"><strong>Product</strong></MudTableSortLabel></MudTh>
                             <MudTh><MudTableSortLabel SortLabel="instruction_field" SortBy="new Func<ProductionLogSummaryDTO, object>(x => x.WorkInstructionName ?? string.Empty)"><strong>Work Instruction</strong></MudTableSortLabel></MudTh>
@@ -71,9 +110,9 @@
                             </MudTd>
                         </RowTemplate>
                         <PagerContent>
-                            <MudTablePager InfoFormat="@InfoFormat()" 
-                                           HorizontalAlignment="HorizontalAlignment.Center" 
-                                           RowsPerPageString="Logs per Page"/>
+                            <MudTablePager InfoFormat="@InfoFormat()"
+                                           HorizontalAlignment="HorizontalAlignment.Center"
+                                           RowsPerPageString="Logs per Page" />
                         </PagerContent>
                     </MudTable>
                 }
@@ -81,31 +120,58 @@
                 {
                     <div class="alert alert-info">No production logs found.</div>
                 }
+
+                @* Dialogs — rendered outside table so they don't interfere with layout *@
+                <ExportDialog @bind-Visible="_showExportDialog"
+                              Query="BuildExportQuery()"
+                              ExportedBy="@(_currentUsername)"
+                              OnExportComplete="OnExportComplete" />
+
+                <PreDeleteExportDialog @bind-Visible="_showPreDeleteDialog"
+                                       LogCount="@_selectedItems.Count"
+                                       SelectedLogIds="@SelectedIds"
+                                       ExportedBy="@(_currentUsername)"
+                                       Query="BuildExportQuery()"
+                                       OnExportConfirmed="OpenConfirmDeleteDialog" />
+
+                <ConfirmDeleteDialog @bind-Visible="_showConfirmDeleteDialog"
+                                     LogCount="@_selectedItems.Count"
+                                     ExportFilename="@_exportFilenameForDelete"
+                                     OnConfirmed="ExecuteDeleteAsync" />
             </Authorized>
         </AuthorizeView>
     </ChildContent>
     <ErrorContent Context="ex">
-        <div class="alert alert-danger" role="alert">
-            An error occurred: @ex.Message
-        </div>
+        <div class="alert alert-danger" role="alert">An error occurred: @ex.Message</div>
     </ErrorContent>
 </ErrorBoundary>
 
 @code {
     private bool IsLoading { get; set; } = true;
-    private List<ProductionLogSummaryDTO> ProductionLogs { get; set; } = new();
-    private IEnumerable<ProductionLogSummaryDTO> pagedData = new List<ProductionLogSummaryDTO>();
-
-    private MudTable<ProductionLogSummaryDTO> _table = new MudTable<ProductionLogSummaryDTO>();
-
+    private List<ProductionLogSummaryDTO> ProductionLogs { get; set; } = [];
+    private IEnumerable<ProductionLogSummaryDTO> pagedData = [];
+    private HashSet<ProductionLogSummaryDTO> _selectedItems = [];
+    private MudTable<ProductionLogSummaryDTO> _table = new();
     private int totalItems;
-    
-    private Dictionary<ProductionLogSummaryDTO, int> SearchHits { get; } = [];
-    private int MaxHits => SearchHits.Values.Max();
-    
+    private string _currentUsername = string.Empty;
+    private string _userId = string.Empty;
+
     private const string NoProduct = "(No Product)";
     private const string NoWorkInstruction = "(No Work Instruction)";
-    
+
+    // Export / Delete dialog state
+    private bool _showExportDialog;
+    private bool _showPreDeleteDialog;
+    private bool _showConfirmDeleteDialog;
+    private string _exportFilenameForDelete = string.Empty;
+    private string? _deleteError;
+    private string? _deleteSuccess;
+
+    private List<int> SelectedIds => _selectedItems.Select(l => l.Id).ToList();
+
+    private Dictionary<ProductionLogSummaryDTO, int> SearchHits { get; } = [];
+    private int MaxHits => SearchHits.Count > 0 ? SearchHits.Values.Max() : 0;
+
     private string _searchString = "";
     private string SearchString
     {
@@ -113,128 +179,150 @@
         set
         {
             _searchString = value;
-            _table.ReloadServerData(); 
+            _table.ReloadServerData();
         }
     }
-    
+
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        _currentUsername = authState.User.Identity?.Name ?? "system";
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
         await GrabServerData();
     }
-    
+
     private async Task GrabServerData()
     {
         IsLoading = true;
 
-        var authState = await AuthProvider.GetAuthenticationStateAsync();
-        var user = authState.User;
-
-        if (user.Identity is { IsAuthenticated: true })
-        {
-            var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
-            if (!string.IsNullOrWhiteSpace(userId))
-            {
-                ProductionLogs = await ProductionLogService.GetSummariesByOperatorIdAsync(userId) ?? [];
-            }
-        }
+        if (!string.IsNullOrWhiteSpace(_userId))
+            ProductionLogs = await ProductionLogService.GetSummariesByOperatorIdAsync(_userId) ?? [];
 
         IsLoading = false;
     }
-    
+
+    private ProductionLogArchiveQuery BuildExportQuery() => new()
+    {
+        Page = 1,
+        PageSize = 10_000,
+        FilterOperatorId = _userId
+    };
+
     private async Task<TableData<ProductionLogSummaryDTO>> ServerReload(TableState state, CancellationToken token)
     {
         IEnumerable<ProductionLogSummaryDTO> data = ProductionLogs;
         await Task.Delay(20, token);
 
         foreach (var log in data)
-        {
             SearchHits[log] = FilterHits(log, SearchString);
-        }
-        
-        data = data.Where(log => 
-            (SearchHits[log] >= MaxHits)
-        ).ToArray();
+
+        data = data.Where(log => SearchHits.GetValueOrDefault(log, 0) >= MaxHits).ToArray();
         totalItems = data.Count();
-        
-        switch (state.SortLabel)
+
+        data = state.SortLabel switch
         {
-            case "product_field":
-                data = data.OrderByDirection(state.SortDirection, o => o.ProductName);
-                break;
-            case "instruction_field":
-                data = data.OrderByDirection(state.SortDirection, o => o.WorkInstructionName);
-                break;
-            case "created_field":
-                data = data.OrderByDirection(state.SortDirection, o => o.CreatedOn.LocalDateTime.ToString("yyyy-MM-dd HH:mm"));
-                break;
-        }
+            "product_field" => data.OrderByDirection(state.SortDirection, o => o.ProductName),
+            "instruction_field" => data.OrderByDirection(state.SortDirection, o => o.WorkInstructionName),
+            "created_field" => data.OrderByDirection(state.SortDirection, o => o.CreatedOn.LocalDateTime.ToString("yyyy-MM-dd HH:mm")),
+            _ => data
+        };
+
         pagedData = data.Skip(state.Page * state.PageSize).Take(state.PageSize).ToArray();
-        return new TableData<ProductionLogSummaryDTO>() {TotalItems = totalItems, Items = pagedData};
+        return new TableData<ProductionLogSummaryDTO> { TotalItems = totalItems, Items = pagedData };
     }
-    
+
     private int FilterHits(ProductionLogSummaryDTO log, string search)
     {
+        if (string.IsNullOrWhiteSpace(search)) return 0;
+        var phrase = search.Trim();
         var hits = 0;
-        if (string.IsNullOrWhiteSpace(search))
-            return hits;
-        
-        var searchPhrase = search.Trim();
-        
-        if (SatisfiesFilter(log.ProductName, searchPhrase))
-            hits++;
-        
-        if (SatisfiesFilter(log.WorkInstructionName, searchPhrase))
-            hits++;
-
-        if (SatisfiesFilter(log.CreatedOn.LocalDateTime.ToString("yyyy-MM-dd HH:mm"), searchPhrase))
-            hits++;
-
+        if (SatisfiesFilter(log.ProductName, phrase)) hits++;
+        if (SatisfiesFilter(log.WorkInstructionName, phrase)) hits++;
+        if (SatisfiesFilter(log.CreatedOn.LocalDateTime.ToString("yyyy-MM-dd HH:mm"), phrase)) hits++;
         return hits;
     }
-    
+
     private bool SatisfiesFilter(string? columnPhrase, string searchPhrase)
     {
-        if (!string.IsNullOrWhiteSpace(columnPhrase))
+        if (string.IsNullOrWhiteSpace(columnPhrase)) return false;
+        var trimmed = columnPhrase.Trim();
+        if (trimmed.Contains(searchPhrase, StringComparison.OrdinalIgnoreCase)) return true;
+        foreach (var colWord in trimmed.Split(" "))
         {
-            var trimmedColumnPhrase = columnPhrase.Trim();
-            
-            // intended for columns to catch smaller search phrases
-            if (trimmedColumnPhrase.Contains(searchPhrase, StringComparison.OrdinalIgnoreCase))
-                return true;
-    
-            // for multi worded search phrase
-            foreach (var columnPhraseWord in trimmedColumnPhrase.Split(" "))
+            foreach (var searchWord in searchPhrase.Split(" "))
             {
-                foreach (var searchPhraseWord in searchPhrase.Split(" "))
-                {
-                    if (!string.IsNullOrWhiteSpace(searchPhraseWord) && 
-                        (searchPhrase.Contains(columnPhraseWord, StringComparison.OrdinalIgnoreCase)
-                         || columnPhrase.Contains(searchPhraseWord, StringComparison.OrdinalIgnoreCase)))
-                        return true;
-                }
+                if (!string.IsNullOrWhiteSpace(searchWord) &&
+                    (searchPhrase.Contains(colWord, StringComparison.OrdinalIgnoreCase)
+                     || columnPhrase.Contains(searchWord, StringComparison.OrdinalIgnoreCase)))
+                    return true;
             }
         }
-
         return false;
     }
-    
-    private string InfoFormat() => $"Page {_table.CurrentPage + 1} of {(_table.GetFilteredItemsCount() / _table.RowsPerPage)+1}";
-    
-    private void NavigateToCreate()
+
+    private string InfoFormat() => $"Page {_table.CurrentPage + 1} of {(_table.GetFilteredItemsCount() / _table.RowsPerPage) + 1}";
+
+    private void NavigateToCreate() => NavManager.NavigateTo("/production-log");
+
+    // ── Export ────────────────────────────────────────────────────────────────
+
+    private void OpenExportDialog() => _showExportDialog = true;
+
+    private void OnExportComplete() { }
+
+    // ── Delete flow ──────────────────────────────────────────────────────────
+
+    private void OpenPreDeleteDialog()
     {
-        NavManager.NavigateTo("/production-log");
+        _deleteError = null;
+        _deleteSuccess = null;
+        _showPreDeleteDialog = true;
     }
-    
+
+    private void OpenConfirmDeleteDialog()
+    {
+        if (!ExportTokenService.TryGetValidToken(out var filename))
+        {
+            _deleteError = "Export token expired or missing. Please export the logs again before deleting.";
+            return;
+        }
+        _exportFilenameForDelete = filename ?? string.Empty;
+        _showConfirmDeleteDialog = true;
+    }
+
+    private async Task ExecuteDeleteAsync()
+    {
+        if (!ExportTokenService.TryGetValidToken(out var filename))
+        {
+            _deleteError = "Export token expired. Please export and try again.";
+            return;
+        }
+
+        var result = await ProductionLogService.DeleteManyAsync(SelectedIds, _currentUsername, filename ?? string.Empty);
+        ExportTokenService.Invalidate();
+
+        if (result.Success)
+        {
+            _deleteSuccess = $"{result.DeletedCount} log(s) deleted successfully.";
+            _selectedItems.Clear();
+            await GrabServerData();
+            await _table.ReloadServerData();
+        }
+        else
+        {
+            _deleteError = result.ErrorMessage ?? "Deletion failed.";
+        }
+    }
+
+    // ── Show details ─────────────────────────────────────────────────────────
+
     private async Task OpenDialogAsync(ProductionLogSummaryDTO log)
     {
         var detail = await ProductionLogService.GetDetailByIdAsync(log.Id);
         if (detail == null) return;
 
-        var data = (detail, false);
-
-        await DialogService.ShowDialogAsync<LogOptionsDialog>(data, new DialogParameters()
+        await DialogService.ShowDialogAsync<LogOptionsDialog>((detail, false), new DialogParameters
         {
             Title = $"Log #{log.Id}",
             OnDialogResult = DialogService.CreateDialogCallback(this, HandleDialogAsync),

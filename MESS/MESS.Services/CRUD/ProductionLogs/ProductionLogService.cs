@@ -1,10 +1,13 @@
-﻿using MESS.Data.Context;
+using MESS.Data.Context;
 using MESS.Services.CRUD.SerializableParts;
 using MESS.Services.DTOs.ProductionLogs.Batch;
 using MESS.Services.DTOs.ProductionLogs.Archive;
 using MESS.Services.DTOs.ProductionLogs.CreateRequest;
+using MESS.Services.DTOs.ProductionLogs.Delete;
 using MESS.Services.DTOs.ProductionLogs.Detail;
+using MESS.Services.DTOs.ProductionLogs.Export;
 using MESS.Services.DTOs.ProductionLogs.Form;
+using MESS.Services.DTOs.ProductionLogs.Import;
 using MESS.Services.DTOs.ProductionLogs.Summary;
 using MESS.Services.DTOs.ProductionLogs.UpdateRequest;
 using Microsoft.EntityFrameworkCore;
@@ -136,6 +139,7 @@ public class ProductionLogService : IProductionLogService
             .Select(log => new ProductionLogArchiveRowDTO
             {
                 ProductionLogId = log.Id,
+                OperatorId = log.OperatorId,
                 AttemptId = log.LogSteps
                     .SelectMany(step => step.Attempts)
                     .OrderByDescending(attempt => attempt.SubmitTime)
@@ -149,6 +153,7 @@ public class ProductionLogService : IProductionLogService
                 ProductName = log.Product != null && log.Product.PartDefinition != null
                     ? log.Product.PartDefinition.Name
                     : string.Empty,
+                WorkInstructionId = log.WorkInstructionId,
                 WorkInstructionName = log.WorkInstruction != null
                     ? log.WorkInstruction.Title
                     : string.Empty,
@@ -190,6 +195,9 @@ public class ProductionLogService : IProductionLogService
                 || (hasAttemptSearch && row.AttemptId == attemptId));
         }
 
+        if (!string.IsNullOrWhiteSpace(filters.FilterOperatorId))
+            query = query.Where(row => row.OperatorId == filters.FilterOperatorId);
+
         if (filters.FilterAttemptId is int filterAttemptId)
             query = query.Where(row => row.AttemptId == filterAttemptId);
 
@@ -208,7 +216,11 @@ public class ProductionLogService : IProductionLogService
             query = query.Where(row => row.ProductName.ToLower().Contains(value));
         }
 
-        if (!string.IsNullOrWhiteSpace(filters.FilterWorkInstruction))
+        if (filters.FilterWorkInstructionId is int wiId)
+        {
+            query = query.Where(row => row.WorkInstructionId == wiId);
+        }
+        else if (!string.IsNullOrWhiteSpace(filters.FilterWorkInstruction))
         {
             var value = filters.FilterWorkInstruction.Trim().ToLower();
             query = query.Where(row => row.WorkInstructionName.ToLower().Contains(value));
@@ -800,9 +812,348 @@ public class ProductionLogService : IProductionLogService
 
         if (logs.Count == 0)
             return false;
-        
+
         context.ProductionLogs.RemoveRange(logs);
         await context.SaveChangesAsync();
         return true;
+    }
+
+    // ── Export / Import / Bulk-Delete ────────────────────────────────────────
+
+    private const int ExportRowLimit = 10_000;
+
+    /// <inheritdoc />
+    public async Task<ProductionLogExportDto> GetExportAsync(ProductionLogArchiveQuery query, string exportedBy)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var archiveQuery = BuildArchiveQuery(context);
+        archiveQuery = ApplyArchiveFilters(archiveQuery, query);
+
+        var total = await archiveQuery.CountAsync();
+        if (total > ExportRowLimit)
+            throw new InvalidOperationException($"Export limited to {ExportRowLimit:N0} logs. The current filter matches {total:N0} records. Narrow your filters.");
+
+        var rows = await archiveQuery.ToListAsync();
+        var logIds = rows.Select(r => r.ProductionLogId).ToList();
+
+        var logs = await context.ProductionLogs
+            .AsNoTracking()
+            .Where(l => logIds.Contains(l.Id))
+            .Include(l => l.Product).ThenInclude(p => p!.PartDefinition)
+            .Include(l => l.WorkInstruction)
+            .Include(l => l.LogSteps).ThenInclude(s => s.WorkInstructionStep)
+            .Include(l => l.LogSteps).ThenInclude(s => s.Attempts).ThenInclude(a => a.FailureNoun)
+            .Include(l => l.LogSteps).ThenInclude(s => s.Attempts).ThenInclude(a => a.FailureAdjective)
+            .ToListAsync();
+
+        var parts = await context.ProductionLogParts
+            .AsNoTracking()
+            .Where(p => logIds.Contains(p.ProductionLogId))
+            .Include(p => p.SerializablePart).ThenInclude(sp => sp!.PartDefinition)
+            .ToListAsync();
+
+        var partsByLog = parts.GroupBy(p => p.ProductionLogId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var userIds = logs.Select(l => l.OperatorId).Where(id => id != null).Distinct().ToList();
+        var users = await context.Users
+            .AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Email })
+            .ToListAsync();
+        var userEmailsById = users.ToDictionary(u => u.Id, u => u.Email ?? string.Empty);
+
+        var exportLogs = logs.Select(log => new ProductionLogExportLogDto
+        {
+            ExternalId = log.Id,
+            OperatorId = log.OperatorId,
+            OperatorEmail = log.OperatorId != null && userEmailsById.TryGetValue(log.OperatorId, out var email) ? email : null,
+            ProductId = log.ProductId,
+            ProductName = log.Product?.PartDefinition?.Name,
+            WorkInstructionId = log.WorkInstructionId,
+            WorkInstructionTitle = log.WorkInstruction?.Title,
+            FromBatchOf = log.FromBatchOf,
+            CreatedBy = log.CreatedBy,
+            CreatedOn = log.CreatedOn,
+            LastModifiedBy = log.LastModifiedBy,
+            LastModifiedOn = log.LastModifiedOn,
+            Steps = log.LogSteps.Select(step => new ProductionLogExportStepDto
+            {
+                WorkInstructionStepId = step.WorkInstructionStepId,
+                WorkInstructionStepName = step.WorkInstructionStep?.Name,
+                Attempts = step.Attempts.Select(a => new ProductionLogExportAttemptDto
+                {
+                    Success = a.Success,
+                    Notes = a.Notes,
+                    SubmitTime = a.SubmitTime,
+                    FailureNounId = a.FailureNounId,
+                    FailureNoun = a.FailureNoun?.Name,
+                    FailureAdjectiveId = a.FailureAdjectiveId,
+                    FailureAdjective = a.FailureAdjective?.Name
+                }).ToList()
+            }).ToList(),
+            Parts = partsByLog.TryGetValue(log.Id, out var logParts)
+                ? logParts.Select(p => new ProductionLogExportPartDto
+                {
+                    OperationType = p.OperationType,
+                    PartDefinitionId = p.SerializablePart?.PartDefinitionId ?? 0,
+                    PartDefinitionName = p.SerializablePart?.PartDefinition?.Name,
+                    SerialNumber = p.SerializablePart?.SerialNumber
+                }).ToList()
+                : []
+        }).ToList();
+
+        return new ProductionLogExportDto
+        {
+            ExportedAt = DateTimeOffset.UtcNow,
+            ExportedBy = exportedBy,
+            FilterSummary = new ProductionLogExportFilterSummaryDto
+            {
+                DateFrom = query.FilterCreatedOnFrom?.ToString("yyyy-MM-dd"),
+                DateTo = query.FilterCreatedOnTo?.ToString("yyyy-MM-dd"),
+                Product = query.FilterProduct,
+                WorkInstruction = query.FilterWorkInstruction,
+                Search = query.Search
+            },
+            Logs = exportLogs
+        };
+    }
+
+    /// <inheritdoc />
+    public async Task<ProductionLogImportValidationResult> ValidateImportAsync(ProductionLogExportDto import)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var result = new ProductionLogImportValidationResult();
+
+        var productIds = import.Logs.Select(l => l.ProductId).Distinct().ToList();
+        var productNames = import.Logs.Select(l => l.ProductName).Where(n => n != null).Distinct().ToList();
+        var existingProductIds = await context.Products.Where(p => productIds.Contains(p.Id)).Select(p => p.Id).ToListAsync();
+        var existingProductsByName = await context.Products
+            .Include(p => p.PartDefinition)
+            .Where(p => productNames.Contains(p.PartDefinition.Name))
+            .Select(p => p.PartDefinition.Name)
+            .ToListAsync();
+
+        var wiIds = import.Logs.Select(l => l.WorkInstructionId).Distinct().ToList();
+        var wiTitles = import.Logs.Select(l => l.WorkInstructionTitle).Where(t => t != null).Distinct().ToList();
+        var existingWiIds = await context.WorkInstructions.Where(w => wiIds.Contains(w.Id)).Select(w => w.Id).ToListAsync();
+        var existingWiByTitle = await context.WorkInstructions
+            .Where(w => wiTitles.Contains(w.Title))
+            .Select(w => w.Title)
+            .ToListAsync();
+
+        var operatorIds = import.Logs.Select(l => l.OperatorId).Where(id => id != null).Distinct().ToList();
+        var operatorEmails = import.Logs.Select(l => l.OperatorEmail).Where(e => e != null).Distinct().ToList();
+        var existingOperatorIds = await context.Users.Where(u => operatorIds.Contains(u.Id)).Select(u => u.Id).ToListAsync();
+        var existingOperatorEmails = await context.Users.Where(u => operatorEmails.Contains(u.Email)).Select(u => u.Email).ToListAsync();
+
+        var allPartDefIds = import.Logs.SelectMany(l => l.Parts).Select(p => p.PartDefinitionId).Distinct().ToList();
+        var allPartDefNames = import.Logs.SelectMany(l => l.Parts).Select(p => p.PartDefinitionName).Where(n => n != null).Distinct().ToList();
+        var existingPartDefIds = await context.PartDefinitions.Where(p => allPartDefIds.Contains(p.Id)).Select(p => p.Id).ToListAsync();
+        var existingPartDefNames = await context.PartDefinitions.Where(p => allPartDefNames.Contains(p.Name)).Select(p => p.Name).ToListAsync();
+
+        for (var i = 0; i < import.Logs.Count; i++)
+        {
+            var log = import.Logs[i];
+            var row = i + 1;
+
+            var productOk = existingProductIds.Contains(log.ProductId) || (log.ProductName != null && existingProductsByName.Contains(log.ProductName));
+            if (!productOk)
+                result.Errors.Add(new ProductionLogImportValidationError { Row = row, Field = "Product", Value = $"id={log.ProductId}, name={log.ProductName}", Reason = $"Product '{log.ProductName}' (id={log.ProductId}) does not exist." });
+
+            var wiOk = existingWiIds.Contains(log.WorkInstructionId) || (log.WorkInstructionTitle != null && existingWiByTitle.Contains(log.WorkInstructionTitle));
+            if (!wiOk)
+                result.Errors.Add(new ProductionLogImportValidationError { Row = row, Field = "WorkInstruction", Value = $"id={log.WorkInstructionId}, title={log.WorkInstructionTitle}", Reason = $"Work Instruction '{log.WorkInstructionTitle}' (id={log.WorkInstructionId}) does not exist." });
+
+            if (log.OperatorId != null || log.OperatorEmail != null)
+            {
+                var opOk = (log.OperatorId != null && existingOperatorIds.Contains(log.OperatorId))
+                           || (log.OperatorEmail != null && existingOperatorEmails.Contains(log.OperatorEmail));
+                if (!opOk)
+                    result.Errors.Add(new ProductionLogImportValidationError { Row = row, Field = "Operator", Value = $"id={log.OperatorId}, email={log.OperatorEmail}", Reason = $"Operator '{log.OperatorEmail}' (id={log.OperatorId}) does not exist." });
+            }
+
+            foreach (var part in log.Parts)
+            {
+                var pdOk = existingPartDefIds.Contains(part.PartDefinitionId) || (part.PartDefinitionName != null && existingPartDefNames.Contains(part.PartDefinitionName));
+                if (!pdOk)
+                    result.Errors.Add(new ProductionLogImportValidationError { Row = row, Field = "PartDefinition", Value = $"id={part.PartDefinitionId}, name={part.PartDefinitionName}", Reason = $"Part Definition '{part.PartDefinitionName}' (id={part.PartDefinitionId}) does not exist in '{part.OperationType}' part entry." });
+            }
+        }
+
+        return result;
+    }
+
+    /// <inheritdoc />
+    public async Task<ProductionLogImportResult> ImportAsync(ProductionLogExportDto import, string importedBy)
+    {
+        var validation = await ValidateImportAsync(import);
+        if (!validation.IsValid)
+            throw new InvalidOperationException($"Import validation failed with {validation.Errors.Count} error(s). Call ValidateImportAsync first.");
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync();
+            try
+            {
+                var existingExternalIds = await context.ProductionLogs
+                    .Where(l => l.ExternalId != null)
+                    .Select(l => l.ExternalId!.Value)
+                    .ToHashSetAsync();
+
+                var productIds = import.Logs.Select(l => l.ProductId).Distinct().ToList();
+                var productsById = await context.Products.Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p);
+                var productNames = import.Logs.Select(l => l.ProductName).Where(n => n != null).Distinct().ToList();
+                var productsByName = (await context.Products.Include(p => p.PartDefinition)
+                    .Where(p => productNames.Contains(p.PartDefinition.Name))
+                    .ToListAsync())
+                    .GroupBy(p => p.PartDefinition.Name)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var wiIds = import.Logs.Select(l => l.WorkInstructionId).Distinct().ToList();
+                var wisById = await context.WorkInstructions.Where(w => wiIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, w => w);
+                var wiTitles = import.Logs.Select(l => l.WorkInstructionTitle).Where(t => t != null).Distinct().ToList();
+                var wisByTitle = (await context.WorkInstructions
+                    .Where(w => wiTitles.Contains(w.Title))
+                    .ToListAsync())
+                    .GroupBy(w => w.Title)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var operatorIds = import.Logs.Select(l => l.OperatorId).Where(id => id != null).Distinct().ToList();
+                var operatorEmails = import.Logs.Select(l => l.OperatorEmail).Where(e => e != null).Distinct().ToList();
+                var usersById = await context.Users.Where(u => operatorIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u);
+                var usersByEmail = (await context.Users
+                    .Where(u => operatorEmails.Contains(u.Email))
+                    .ToListAsync())
+                    .GroupBy(u => u.Email!)
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                var importedOn = DateTimeOffset.UtcNow;
+                var result = new ProductionLogImportResult();
+                var logsToAdd = new List<Data.Models.ProductionLog>();
+
+                foreach (var dto in import.Logs)
+                {
+                    if (existingExternalIds.Contains(dto.ExternalId))
+                    {
+                        result.SkippedDuplicateCount++;
+                        result.SkippedExternalIds.Add(dto.ExternalId);
+                        continue;
+                    }
+
+                    var product = productsById.TryGetValue(dto.ProductId, out var p) ? p
+                        : dto.ProductName != null && productsByName.TryGetValue(dto.ProductName, out var pn) ? pn : null;
+                    var wi = wisById.TryGetValue(dto.WorkInstructionId, out var w) ? w
+                        : dto.WorkInstructionTitle != null && wisByTitle.TryGetValue(dto.WorkInstructionTitle, out var wt) ? wt : null;
+                    var operatorId = dto.OperatorId;
+                    if (operatorId == null && dto.OperatorEmail != null && usersByEmail.TryGetValue(dto.OperatorEmail, out var u))
+                        operatorId = u.Id;
+
+                    var log = new Data.Models.ProductionLog
+                    {
+                        ProductId = product?.Id ?? dto.ProductId,
+                        WorkInstructionId = wi?.Id ?? dto.WorkInstructionId,
+                        OperatorId = operatorId,
+                        FromBatchOf = dto.FromBatchOf,
+                        ExternalId = dto.ExternalId,
+                        ImportedBy = importedBy,
+                        ImportedOn = importedOn,
+                        CreatedBy = dto.CreatedBy ?? importedBy,
+                        CreatedOn = dto.CreatedOn,
+                        LastModifiedBy = dto.LastModifiedBy ?? importedBy,
+                        LastModifiedOn = dto.LastModifiedOn,
+                        LogSteps = dto.Steps.Select(s => new Data.Models.ProductionLogStep
+                        {
+                            WorkInstructionStepId = s.WorkInstructionStepId,
+                            Attempts = s.Attempts.Select(a => new Data.Models.ProductionLogStepAttempt
+                            {
+                                Success = a.Success,
+                                Notes = a.Notes,
+                                SubmitTime = a.SubmitTime,
+                                FailureNounId = a.FailureNounId,
+                                FailureAdjectiveId = a.FailureAdjectiveId
+                            }).ToList()
+                        }).ToList()
+                    };
+
+                    logsToAdd.Add(log);
+                }
+
+                if (logsToAdd.Count > 0)
+                {
+                    await context.ProductionLogs.AddRangeAsync(logsToAdd);
+                    await context.SaveChangesAsync();
+                }
+
+                await transaction.CommitAsync();
+                result.CreatedCount = logsToAdd.Count;
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        });
+    }
+
+    /// <inheritdoc />
+    public async Task<ProductionLogBulkDeleteResult> DeleteManyAsync(List<int> ids, string deletedBy, string exportFilename)
+    {
+        if (ids.Count == 0)
+            return new ProductionLogBulkDeleteResult { ErrorMessage = "No IDs provided." };
+
+        await using var context = await _contextFactory.CreateDbContextAsync();
+
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync();
+            try
+            {
+                var logs = await context.ProductionLogs
+                    .Include(l => l.LogSteps).ThenInclude(s => s.Attempts)
+                    .Where(l => ids.Contains(l.Id))
+                    .ToListAsync();
+
+                var foundIds = logs.Select(l => l.Id).ToHashSet();
+                var missingIds = ids.Where(id => !foundIds.Contains(id)).ToList();
+                if (missingIds.Count > 0)
+                {
+                    await transaction.RollbackAsync();
+                    return new ProductionLogBulkDeleteResult { ErrorMessage = $"Production log IDs not found: {string.Join(", ", missingIds)}." };
+                }
+
+                context.ProductionLogs.RemoveRange(logs);
+                await context.SaveChangesAsync();
+
+                var audit = new Data.Models.ProductionLogDeletionAudit
+                {
+                    DeletedBy = deletedBy,
+                    DeletedOn = DateTimeOffset.UtcNow,
+                    LogCount = logs.Count,
+                    LogIds = ids,
+                    ExportFile = exportFilename
+                };
+                context.ProductionLogDeletionAudits.Add(audit);
+                await context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+
+                Log.Information("Bulk deleted {Count} production logs. AuditId={AuditId} DeletedBy={DeletedBy}", logs.Count, audit.Id, deletedBy);
+
+                return new ProductionLogBulkDeleteResult { DeletedCount = logs.Count, AuditId = audit.Id };
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                Log.Error(ex, "Exception during DeleteManyAsync for {Count} log IDs", ids.Count);
+                return new ProductionLogBulkDeleteResult { ErrorMessage = ex.Message };
+            }
+        });
     }
 }

@@ -1,0 +1,148 @@
+@using MESS.Services.DTOs.ProductionLogs.Archive
+@using MESS.Services.DTOs.ProductionLogs.Export
+@using MESS.Services.CRUD.ProductionLogs
+@using MESS.Services.Files.ProductionLogs
+@using MESS.Services.UI.ExportToken
+@using System.Text.Json
+@inject IProductionLogService ProductionLogService
+@inject IProductionLogExcelService ExcelService
+@inject IExportTokenService ExportTokenService
+@inject IJSRuntime JS
+
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45);" @onclick="OnBackdropClick">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Export Production Logs</h5>
+                    <button type="button" class="btn-close" @onclick="Close" disabled="@_busy"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_limitWarning != null)
+                    {
+                        <div class="alert alert-warning py-2">@_limitWarning</div>
+                    }
+                    @if (_error != null)
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Format</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" id="fmtJson" name="exportFormat"
+                                       checked="@(_format == FormatJson)"
+                                       @onchange="@(() => SetFormat(FormatJson))" />
+                                <label class="form-check-label" for="fmtJson">JSON</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" id="fmtXlsx" name="exportFormat"
+                                       checked="@(_format == FormatXlsx)"
+                                       @onchange="@(() => SetFormat(FormatXlsx))" />
+                                <label class="form-check-label" for="fmtXlsx">Excel (.xlsx)</label>
+                            </div>
+                        </div>
+                    </div>
+                    @if (_busy)
+                    {
+                        <div class="d-flex align-items-center gap-2 text-muted">
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span>Preparing export...</span>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="Close" disabled="@_busy">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="ExportAsync" disabled="@_busy">Export</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const string FormatJson = "json";
+    private const string FormatXlsx = "xlsx";
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public required ProductionLogArchiveQuery Query { get; set; }
+    [Parameter] public required string ExportedBy { get; set; }
+    [Parameter] public EventCallback OnExportComplete { get; set; }
+
+    private string _format = FormatJson;
+    private bool _busy;
+    private string? _limitWarning;
+    private string? _error;
+
+    private void SetFormat(string fmt) => _format = fmt;
+
+    private async Task ExportAsync()
+    {
+        _error = null;
+        _limitWarning = null;
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            var export = await ProductionLogService.GetExportAsync(Query, ExportedBy);
+            var date = DateTimeOffset.Now.ToString("yyyy-MM-dd");
+            var context = string.Join("_",
+                new[] { Query.FilterProduct, Query.FilterWorkInstruction }
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Select(s => s!.Replace(" ", "-")));
+            var namePart = string.IsNullOrEmpty(context) ? "all" : context;
+
+            if (_format == FormatJson)
+            {
+                var json = JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true });
+                var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+                var filename = $"production-logs_{date}_{namePart}.json";
+                await DownloadBytesAsync(bytes, filename, "application/json");
+                ExportTokenService.RecordExport(filename);
+            }
+            else
+            {
+                var stream = ExcelService.GenerateWorkbook(export);
+                var bytes = stream.ToArray();
+                var filename = $"production-logs_{date}_{namePart}.xlsx";
+                await DownloadBytesAsync(bytes, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                ExportTokenService.RecordExport(filename);
+            }
+
+            if (OnExportComplete.HasDelegate)
+                await OnExportComplete.InvokeAsync();
+
+            await Close();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("Export limited"))
+        {
+            _limitWarning = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DownloadBytesAsync(byte[] bytes, string filename, string mimeType)
+    {
+        using var stream = new MemoryStream(bytes);
+        using var streamRef = new DotNetStreamReference(stream);
+        await JS.InvokeVoidAsync("downloadFileFromStream", filename, streamRef);
+    }
+
+    private async Task Close()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private Task OnBackdropClick() => Close();
+}

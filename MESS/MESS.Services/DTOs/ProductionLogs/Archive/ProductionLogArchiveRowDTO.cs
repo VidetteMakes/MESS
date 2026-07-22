@@ -8,6 +8,9 @@ public sealed class ProductionLogArchiveRowDTO
     /// <summary>Production log id, used for opening details.</summary>
     public int ProductionLogId { get; set; }
 
+    /// <summary>Identity GUID of the operator who executed this production log.</summary>
+    public string? OperatorId { get; set; }
+
     /// <summary>Most recent production log step attempt id for this log.</summary>
     public int? AttemptId { get; set; }
 
@@ -16,6 +19,9 @@ public sealed class ProductionLogArchiveRowDTO
 
     /// <summary>Product name.</summary>
     public string ProductName { get; set; } = string.Empty;
+
+    /// <summary>Database ID of the work instruction linked to this production log.</summary>
+    public int WorkInstructionId { get; set; }
 
     /// <summary>Work instruction title.</summary>
     public string WorkInstructionName { get; set; } = string.Empty;

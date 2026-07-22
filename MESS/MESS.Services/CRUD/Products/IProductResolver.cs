@@ -34,4 +34,17 @@ public interface IProductResolver
     Task<List<Product>> ResolveProductsAsync(
         ApplicationContext context,
         IEnumerable<string> productNames);
+
+    /// <summary>
+    /// Looks up existing <see cref="Product"/> entities by part name without creating any
+    /// missing <see cref="Product"/> or <see cref="PartDefinition"/> rows.
+    /// </summary>
+    /// <param name="context">The active context used for the lookup.</param>
+    /// <param name="productNames">Product names to resolve (matched case-insensitively by part name).</param>
+    /// <returns>
+    /// A tuple of the resolved products and the list of names that could not be matched to a product.
+    /// </returns>
+    Task<(List<Product> Resolved, List<string> Missing)> LookupProductsAsync(
+        ApplicationContext context,
+        IEnumerable<string> productNames);
 }

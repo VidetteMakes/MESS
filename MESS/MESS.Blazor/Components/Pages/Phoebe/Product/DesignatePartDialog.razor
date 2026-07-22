@@ -1,0 +1,206 @@
+@using MESS.Data.Models
+@using MESS.Services.CRUD.PartDefinitions
+@using MESS.Services.CRUD.Products
+@using HorizontalAlignment = MudBlazor.HorizontalAlignment
+@inject IPartDefinitionService PartDefinitionService
+@inject IProductService ProductService
+@inject IToastService ToastService
+
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45);" @onclick="Cancel">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Designate Part as Product</h5>
+                    <button type="button" class="btn-close" @onclick="Cancel" disabled="@_busy"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_error != null)
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+
+                    <p class="text-muted small mb-2">
+                        Select an existing part to designate as a product. Parts already designated are not shown.
+                        To create a new part, use the Part Management page.
+                    </p>
+
+                    <input type="text" class="form-control mb-2" placeholder="Search by name or number..."
+                           @bind="SearchString" @bind:event="oninput" disabled="@_busy" />
+
+                    <MudTable @ref="_table"
+                              T="PartDefinition"
+                              ServerData="ServerReload"
+                              Loading="_isLoading"
+                              Hover="true"
+                              FixedHeader="true"
+                              Height="320px"
+                              MultiSelection="false"
+                              @bind-SelectedItem="_selected"
+                              Class="border rounded-3"
+                              TableClass="table table-striped table-hover">
+                        <HeaderContent>
+                            <MudTh>Name</MudTh>
+                            <MudTh>Number</MudTh>
+                        </HeaderContent>
+                        <RowTemplate Context="part">
+                            <MudTd DataLabel="Name">@part.Name</MudTd>
+                            <MudTd DataLabel="Number">@(string.IsNullOrWhiteSpace(part.Number) ? "-" : part.Number)</MudTd>
+                        </RowTemplate>
+                        <PagerContent>
+                            <MudTablePager HorizontalAlignment="HorizontalAlignment.Center"
+                                           RowsPerPageString="Parts per Page" />
+                        </PagerContent>
+                    </MudTable>
+
+                    @if (_selected is not null)
+                    {
+                        <div class="mt-2 small">
+                            Selected: <strong>@_selected.Name</strong>
+                            @(string.IsNullOrWhiteSpace(_selected.Number) ? "" : $" ({_selected.Number})")
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="Cancel" disabled="@_busy">Cancel</button>
+                    <button type="button" class="btn btn-primary btn-sm"
+                            @onclick="ConfirmAsync"
+                            disabled="@(_selected is null || _busy)">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Designate as Product
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Whether the dialog is visible.</summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>Two-way binding callback for <see cref="Visible"/>.</summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>Raised after a part is successfully designated as a product.</summary>
+    [Parameter] public EventCallback OnDesignated { get; set; }
+
+    private MudTable<PartDefinition> _table = new();
+    private PartDefinition? _selected;
+    private List<PartDefinition> _availableParts = [];
+    private bool _isLoading;
+    private bool _busy;
+    private string? _error;
+    private bool _loadedOnce;
+
+    private string _searchString = "";
+    private string SearchString
+    {
+        get => _searchString;
+        set
+        {
+            _searchString = value;
+            _table.ReloadServerData();
+        }
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        // Refresh the available parts each time the dialog becomes visible.
+        if (Visible && !_loadedOnce)
+        {
+            _loadedOnce = true;
+            await LoadAvailablePartsAsync();
+            await _table.ReloadServerData();
+        }
+        else if (!Visible)
+        {
+            _loadedOnce = false;
+            _selected = null;
+            _searchString = "";
+            _error = null;
+        }
+    }
+
+    private async Task LoadAvailablePartsAsync()
+    {
+        _isLoading = true;
+
+        var allParts = await PartDefinitionService.GetAllAsync();
+        var designatedPartIds = (await ProductService.GetAllSummariesAsync())
+            .Select(p => p.PartDefinitionId)
+            .ToHashSet();
+
+        _availableParts = allParts
+            .Where(p => !designatedPartIds.Contains(p.Id))
+            .OrderBy(p => p.Name)
+            .ToList();
+
+        _isLoading = false;
+    }
+
+    private async Task<TableData<PartDefinition>> ServerReload(TableState state, CancellationToken token)
+    {
+        IEnumerable<PartDefinition> data = _availableParts;
+        await Task.Delay(10, token);
+
+        if (!string.IsNullOrWhiteSpace(SearchString))
+        {
+            var term = SearchString.Trim();
+            data = data.Where(p =>
+                (p.Name?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (p.Number?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        var items = data.ToList();
+        var paged = items.Skip(state.Page * state.PageSize).Take(state.PageSize).ToList();
+        return new TableData<PartDefinition> { TotalItems = items.Count, Items = paged };
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_selected is null)
+            return;
+
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            await ProductService.DesignateAsProductAsync(_selected.Id);
+            ToastService.ShowSuccess($"'{_selected.Name}' is now a product.");
+
+            if (OnDesignated.HasDelegate)
+                await OnDesignated.InvokeAsync();
+
+            await Close();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception)
+        {
+            _error = "Could not designate this part as a product. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task Cancel() => await Close();
+
+    private async Task Close()
+    {
+        Visible = false;
+        _selected = null;
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

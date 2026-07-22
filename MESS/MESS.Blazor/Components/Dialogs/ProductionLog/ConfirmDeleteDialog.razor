@@ -1,0 +1,93 @@
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45);" @onclick="OnBackdropClick">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content border-danger">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-trash-fill me-2"></i>Confirm Deletion</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="Cancel"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_error != null)
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+                    <p>You are about to <strong>permanently delete @LogCount production log(s)</strong>. This action cannot be undone.</p>
+                    <p class="text-muted small">An audit record will be saved. The pre-delete export file was: <code>@ExportFilename</code></p>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Type <kbd>DELETE</kbd> to confirm:</label>
+                        <input type="text" class="form-control @(_confirmText == "DELETE" ? "is-valid" : "")"
+                               placeholder="DELETE"
+                               @bind="_confirmText" @bind:event="oninput" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="Cancel">Cancel</button>
+                    <button type="button" class="btn btn-danger btn-sm"
+                            @onclick="ConfirmAsync"
+                            disabled="@(_confirmText != "DELETE" || _busy)">
+                        @if (_busy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int LogCount { get; set; }
+    [Parameter] public string ExportFilename { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnConfirmed { get; set; }
+
+    private string _confirmText = string.Empty;
+    private bool _busy;
+    private string? _error;
+
+    private async Task ConfirmAsync()
+    {
+        if (_confirmText != "DELETE")
+            return;
+
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            if (OnConfirmed.HasDelegate)
+                await OnConfirmed.InvokeAsync();
+
+            await Close();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            _confirmText = string.Empty;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        _confirmText = string.Empty;
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task Close()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private Task OnBackdropClick() => Cancel();
+}

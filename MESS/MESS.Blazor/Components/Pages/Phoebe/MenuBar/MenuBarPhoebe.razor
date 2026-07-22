@@ -1,26 +1,32 @@
 @namespace MESS.Blazor.Components.Pages.Phoebe.MenuBar
 @using System.ComponentModel
 @using Microsoft.AspNetCore.Components.Authorization
+@using MESS.Blazor.Components.Dialogs.ProductionLog
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction.Import
 @using MESS.Blazor.Components.Pages.Phoebe.WorkInstruction.Export
 @using MESS.Services.CRUD.ApplicationUser
 @using MESS.Services.CRUD.PartDefinitions
+@using MESS.Services.CRUD.ProductionLogs
 @using MESS.Services.CRUD.WorkInstructions
+@using MESS.Services.DTOs.ProductionLogs.Archive
 @using MESS.Services.DTOs.Products.Detail
 @using MESS.Services.DTOs.WorkInstructions.File
 @using MESS.Services.DTOs.WorkInstructions.Form
 @using MESS.Services.DTOs.WorkInstructions.Summary
 @using MESS.Services.DTOs.WorkInstructions.Version
 @using MESS.Services.UI.DarkMode
+@using MESS.Services.UI.ExportToken
 @using MESS.Services.UI.WorkInstructionEditor
 @inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
 @inject IApplicationUserService ApplicationUserService
 @inject IWorkInstructionEditorService EditorService
 @inject IWorkInstructionService WorkInstructionService
+@inject IProductionLogService ProductionLogService
 @inject IPartDefinitionService PartDefinitionService
 @inject DarkModeInstance DarkModeInstance
+@inject IExportTokenService ExportTokenService
 
 <div class="menu-bar-card">
     <button class="btn-small" title="Toggle Sidebar" @onclick="ToggleSidebar" aria-label="Toggle sidebar">☰</button>
@@ -37,7 +43,7 @@
             <FluentMenuItem OnClick="@ShowSaveAsDialog" Disabled="@(!HasInstruction)">Save As</FluentMenuItem>
             <AuthorizeView Roles="Administrator">
                 <FluentDivider></FluentDivider>
-                <FluentMenuItem OnClick="@(() => TriggerAndClose(OnDelete))" Disabled="@(!HasInstruction)">Delete</FluentMenuItem>
+                <FluentMenuItem OnClick="@(() => TriggerAndClose(OnDelete))" Disabled="@(!HasInstruction || !_isEditable)">Delete</FluentMenuItem>
             </AuthorizeView>
         </FluentMenu>
 
@@ -151,8 +157,24 @@
     Versions="_versionHistoryList"
     CurrentVersionId="CurrentInstruction?.Id"
     IsLoading="_isLoadingVersions"
+    IsAdministrator="_isAdministrator"
     OnRestore="HandleRestoreVersion"
-    OnDelete="HandleDeleteVersion" />
+    OnDelete="HandleDeleteVersion"
+    OnDeleteWithLogs="HandleDeleteVersionWithLogs" />
+
+@* Pre-delete export dialog for WI version deletions *@
+<PreDeleteExportDialog @bind-Visible="_showVersionPreDeleteDialog"
+                       LogCount="@_versionDeleteLogCount"
+                       SelectedLogIds="@_emptyLogIds"
+                       ExportedBy="@(_activeLineOperatorInternal ?? string.Empty)"
+                       Query="@_versionDeleteQuery"
+                       OnExportConfirmed="OpenVersionConfirmDeleteDialog" />
+
+@* Confirm dialog for WI version deletions *@
+<ConfirmDeleteDialog @bind-Visible="_showVersionConfirmDeleteDialog"
+                     LogCount="@_versionDeleteLogCount"
+                     ExportFilename="@_versionDeleteExportFilename"
+                     OnConfirmed="ExecuteVersionDeleteWithLogsAsync" />
 
 <WorkInstructionImportDialog 
     Visible="@_showImportDialog" 
@@ -180,6 +202,17 @@
 
 @code {
     private string? ActiveLineOperator { get; set; }
+    private string? _activeLineOperatorInternal;
+    private bool _isAdministrator;
+
+    // ── WI version delete-with-logs state ────────────────────────────────────
+    private bool _showVersionPreDeleteDialog;
+    private bool _showVersionConfirmDeleteDialog;
+    private int _pendingDeleteVersionId;
+    private int _versionDeleteLogCount;
+    private string _versionDeleteExportFilename = string.Empty;
+    private ProductionLogArchiveQuery _versionDeleteQuery = new();
+    private static readonly List<int> _emptyLogIds = [];
 
     /// <summary>
     /// Raised when the sidebar toggle button is clicked.
@@ -343,6 +376,8 @@
     {
         var state = await AuthProvider.GetAuthenticationStateAsync();
         ActiveLineOperator = state.User.Identity?.Name;
+        _activeLineOperatorInternal = state.User.Identity?.Name ?? "system";
+        _isAdministrator = state.User.IsInRole("Administrator");
         DarkModeInstance.PropertyChanged += OnDarkModeChanged;
     }
     
@@ -354,7 +389,9 @@
         }
     }
     
-    protected override void OnParametersSet()
+    private bool _isEditable = true;
+
+    protected override async Task OnParametersSetAsync()
     {
         if (_previousInstruction != CurrentInstruction)
         {
@@ -366,6 +403,15 @@
             EditorService.SetProducedPartName(_partProducedName, markDirty: false);
 
             _ = RunPartLookupDebounce();
+
+            if (CurrentInstruction != null)
+            {
+                _isEditable = await WorkInstructionService.IsEditable(CurrentInstruction.ToNewEntity());
+            }
+            else
+            {
+                _isEditable = true;
+            }
 
             StateHasChanged();
         }
@@ -515,7 +561,53 @@
 
         if (CurrentInstruction?.OriginalId is { } originalId)
         {
-            await LoadVersionHistoryAsync(originalId); // Refresh sidebar list
+            await LoadVersionHistoryAsync(originalId);
+        }
+    }
+
+    private async Task HandleDeleteVersionWithLogs(int versionId)
+    {
+        _pendingDeleteVersionId = versionId;
+
+        // Scope the export query to this specific WI version's logs
+        _versionDeleteQuery = new ProductionLogArchiveQuery
+        {
+            Page = 1,
+            PageSize = 10_000,
+            FilterWorkInstructionId = versionId
+        };
+
+        // Get the log count so the dialog can show it
+        var page = await ProductionLogService.GetArchivePageAsync(new ProductionLogArchiveQuery
+        {
+            Page = 1,
+            PageSize = 1,
+            FilterWorkInstructionId = versionId
+        });
+        _versionDeleteLogCount = page.Total;
+
+        _showVersionPreDeleteDialog = true;
+    }
+
+    private void OpenVersionConfirmDeleteDialog()
+    {
+        if (!ExportTokenService.TryGetValidToken(out var filename))
+            return;
+
+        _versionDeleteExportFilename = filename ?? string.Empty;
+        _showVersionConfirmDeleteDialog = true;
+    }
+
+    private async Task ExecuteVersionDeleteWithLogsAsync()
+    {
+        ExportTokenService.Invalidate();
+
+        await WorkInstructionService.DeleteByIdAsync(_pendingDeleteVersionId);
+        _pendingDeleteVersionId = 0;
+
+        if (CurrentInstruction?.OriginalId is { } originalId)
+        {
+            await LoadVersionHistoryAsync(originalId);
         }
     }
     

@@ -50,6 +50,8 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
     public bool IsDirty { get; private set; }
     /// <inheritdoc />
     public EditorMode Mode { get; private set; } = EditorMode.None;
+    /// <inheritdoc />
+    public bool IsMinimalEditingMode { get; private set; }
 
     /// <inheritdoc />
     public event Action? OnChanged;
@@ -106,6 +108,7 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
         };
 
         Mode = EditorMode.CreateNew;
+        IsMinimalEditingMode = false;
         IsDirty = true;
         NotifyChanged();
     }
@@ -131,6 +134,7 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
 
         Current = newInstruction;
         Mode = EditorMode.CreateNew;
+        IsMinimalEditingMode = false;
         IsDirty = true;
         NotifyChanged();
     }
@@ -144,6 +148,10 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
         Current = wi ?? throw new KeyNotFoundException($"Work instruction with id {id} was not found.");
         Mode = EditorMode.EditExisting;
         IsDirty = false;
+
+        // Minimal mode: true when the WI has production logs (structural edits blocked).
+        IsMinimalEditingMode = !await _workInstructionService.IsEditable(Current.ToNewEntity());
+
         NotifyChanged();
     }
     
@@ -152,10 +160,11 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
     {
         if (Current != null)
         {
-          Current = await CloneForNewVersion(Current);
-          Mode = EditorMode.CreateNewVersion;
-          IsDirty = true;
-          NotifyChanged();          
+            Current = await CloneForNewVersion(Current);
+            Mode = EditorMode.CreateNewVersion;
+            IsMinimalEditingMode = false;
+            IsDirty = true;
+            NotifyChanged();
         }
     }
     
@@ -181,32 +190,29 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
 
         Current = await CloneForNewVersion(templateForm);
         Mode = EditorMode.CreateNewVersion;
+        IsMinimalEditingMode = false;
         IsDirty = true;
         NotifyChanged();
     }
-    
+
     /// <inheritdoc />
     public async Task LoadForNewVersionFromVersionAsync(int versionId)
     {
-        // Load the version to restore by ID
         var oldVersion = await _workInstructionService.GetFormByIdAsync(versionId);
         if (oldVersion == null)
             throw new KeyNotFoundException($"Work instruction version {versionId} was not found.");
 
-        // Clone it
         var newVersion = await CloneForNewVersion(oldVersion);
-
-        // Assign OriginalId from the old version
         newVersion.OriginalId = oldVersion.OriginalId;
 
-        // Set mode and mark as dirty
         Current = newVersion;
         Mode = EditorMode.CreateNewVersion;
+        IsMinimalEditingMode = false;
         IsDirty = true;
 
         NotifyChanged();
     }
-    
+
     /// <summary>
     /// Loads an imported <see cref="WorkInstructionFormDTO"/> into the editor service.
     /// This instruction has not been saved to the database yet.
@@ -216,7 +222,6 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
     {
         if (imported == null) throw new ArgumentNullException(nameof(imported));
 
-        // Optionally clone nodes to avoid accidental shared references
         var clonedNodes = await CloneNodesAsync(imported.Nodes);
 
         Current = new WorkInstructionFormDTO
@@ -234,6 +239,7 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
         };
 
         Mode = EditorMode.CreateNew;
+        IsMinimalEditingMode = false;
         IsDirty = true;
 
         NotifyChanged();
@@ -425,6 +431,7 @@ public class WorkInstructionEditorService : IWorkInstructionEditorService
         Current = null;
         IsDirty = false;
         Mode = EditorMode.None;
+        IsMinimalEditingMode = false;
         NotifyChanged();
     }
     

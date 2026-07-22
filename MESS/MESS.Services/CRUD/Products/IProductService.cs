@@ -11,33 +11,16 @@ using Data.Models;
 public interface IProductService
 {
     /// <summary>
-    /// Creates a duplicate of the specified product in the database.
+    /// Designates an existing <see cref="PartDefinition"/> as a <see cref="Product"/> by creating a
+    /// new <see cref="Product"/> row referencing it (with <c>IsActive = true</c> and no associated
+    /// work instructions). Does <b>not</b> create a PartDefinition — the part must already exist.
     /// </summary>
-    /// <param name="productToDuplicate">The product to duplicate.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    Task DuplicateAsync(Product productToDuplicate);
-
-    /// <summary>
-    /// Adds a new product to the database.
-    /// </summary>
-    /// <param name="product">The product to add.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    Task CreateAsync(Product product);
-    
-    /// <summary>
-    /// Asynchronously creates a new product using the specified data transfer object.
-    /// </summary>
-    /// <param name="dto">
-    /// The data transfer object containing the information required to create the product.
-    /// </param>
-    /// <remarks>
-    /// Implementations are responsible for mapping the DTO to the underlying domain model
-    /// and persisting it to the data store.
-    /// </remarks>
-    /// <exception cref="ArgumentNullException">
-    /// Thrown when <paramref name="dto"/> is <c>null</c>.
+    /// <param name="partDefinitionId">The ID of the existing part to designate.</param>
+    /// <returns>The ID of the newly created product.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the part does not exist, or is already designated as a product.
     /// </exception>
-    Task CreateAsync(ProductDetailDTO dto);
+    Task<int> DesignateAsProductAsync(int partDefinitionId);
 
     /// <summary>
     /// Finds a product by its unique ID, including related WorkInstructions and WorkStations.
@@ -90,10 +73,15 @@ public interface IProductService
     public Task<IEnumerable<ProductDetailDTO>> GetAllDetailsAsync();
 
     /// <summary>
-    /// Updates an existing product in the database.
+    /// Updates an existing product's <see cref="Product.IsActive"/> flag and its WorkInstruction
+    /// associations. Part details (<see cref="PartDefinition.Name"/> / <see cref="PartDefinition.Number"/>)
+    /// are owned by Part Management and may not be changed here.
     /// </summary>
     /// <param name="product">The product to update.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the supplied product attempts to change the underlying PartDefinition's Name or Number.
+    /// </exception>
     Task UpdateProductAsync(Product product);
     
     /// <summary>

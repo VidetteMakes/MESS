@@ -7,6 +7,8 @@
 @using MESS.Blazor.Components.Navigator
 @using MESS.Services.CRUD.Products
 @using MESS.Services.CRUD.WorkInstructions
+@using MESS.Services.CRUD.WorkInstructions.Import
+@using MudBlazor
 @using MESS.Services.DTOs.Products.Detail
 @using MESS.Services.DTOs.WorkInstructions.Form
 @using MESS.Services.DTOs.WorkInstructions.Nodes.Form
@@ -50,38 +52,96 @@
 <NavigationMenu IsOpen="@_isSidebarOpen" OnToggle="ToggleSidebar" />
 
 <div class="d-flex w-100" style="flex-direction: column; margin-left:@(_isSidebarOpen ? "250px" : "0"); transition: margin-left 0.3s ease;">
+    @if (!string.IsNullOrWhiteSpace(_uniquenessError))
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mx-2 mt-2">@_uniquenessError</MudAlert>
+    }
+
+    @if (_importResolutionError is { HasErrors: true })
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mx-2 mt-2">
+            <div class="fw-semibold mb-1">This work instruction references entities that do not exist. Resolve them, then save again.</div>
+
+            @if (_importResolutionError.MissingPartDefinitions.Count > 0)
+            {
+                <div class="mt-1"><strong>Missing Parts</strong> (create them on the Part Management page):</div>
+                <ul class="mb-1">
+                    @foreach (var name in _importResolutionError.MissingPartDefinitions)
+                    {
+                        <li>@name</li>
+                    }
+                </ul>
+            }
+
+            @if (_importResolutionError.MissingProducts.Count > 0)
+            {
+                <div class="mt-1"><strong>Missing Products</strong> (designate them on the Products page):</div>
+                <ul class="mb-1">
+                    @foreach (var name in _importResolutionError.MissingProducts)
+                    {
+                        <li>@name</li>
+                    }
+                </ul>
+            }
+
+            @if (_importResolutionError.MissingPartNodeParts.Count > 0)
+            {
+                <div class="mt-1"><strong>Missing Parts referenced by nodes</strong> (create them on the Part Management page):</div>
+                <ul class="mb-0">
+                    @foreach (var (stepName, partName) in _importResolutionError.MissingPartNodeParts)
+                    {
+                        <li>@partName <span class="text-muted">(@stepName)</span></li>
+                    }
+                </ul>
+            }
+        </MudAlert>
+    }
+
     @if (HasInstruction)
     {
+        @if (WorkInstructionEditorService.IsMinimalEditingMode)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" NoIcon="false" Class="mx-2 mt-2">
+                <strong>Minimal Editing Mode</strong> — This work instruction has associated production logs.
+                Adding, removing, and reordering nodes is disabled.
+                To make structural changes, use <strong>New Version</strong> in the File menu to create an editable copy.
+            </MudAlert>
+        }
+
         <div class="flex-grow-1">
             <WorkInstructionNodeManagerList
-                WorkInstructionNodes="WorkInstructionEditorService.Current?.Nodes ?? new List<WorkInstructionNodeFormDTO>()" 
-                OnChanged="OnListChanged" 
+                WorkInstructionNodes="WorkInstructionEditorService.Current?.Nodes ?? new List<WorkInstructionNodeFormDTO>()"
+                IsMinimalEditingMode="WorkInstructionEditorService.IsMinimalEditingMode"
+                OnChanged="OnListChanged"
                 OnNewNodeAt="NewNodeAt"
                 OnNodeRemoved="HandleNodeRemoved" />
         </div>
-        
+
         <div class="d-flex ms-2 disable-highlight justify-content-around">
             <div class="d-flex" style="flex-direction: column">
-                @if (!InstructionHasSteps)
+                @if (!InstructionHasSteps && !WorkInstructionEditorService.IsMinimalEditingMode)
                 {
                     <div class="alert alert-info" role="alert">
                         <div>
                             @(!(InstructionHasPart || InstructionHasSteps) ? "This Instruction is empty..." : "")
-                            @((InstructionHasPart && !InstructionHasSteps) ? "There are no steps to this Instruction...": "")
-                            <br/>
-                            Add a Step or Part!    
+                            @((InstructionHasPart && !InstructionHasSteps) ? "There are no steps to this Instruction..." : "")
+                            <br />
+                            Add a Step or Part!
                         </div>
                     </div>
                 }
-                
-                <div id="buttons-holder" class="d-flex border rounded p-2 justify-content-around shadow-sm" style="flex-direction: row;">
-                    <button class="btn btn-sm btn-primary" @onclick="(() => NewNodeAtBottom(PART))">
-                        Add Part
-                    </button>
-                    <button class="btn btn-sm btn-primary" @onclick="(() => NewNodeAtBottom(STEP))">
-                        Add Step
-                    </button>
-                </div>
+
+                @if (!WorkInstructionEditorService.IsMinimalEditingMode)
+                {
+                    <div id="buttons-holder" class="d-flex border rounded p-2 justify-content-around shadow-sm" style="flex-direction: row;">
+                        <button class="btn btn-sm btn-primary" @onclick="(() => NewNodeAtBottom(PART))">
+                            Add Part
+                        </button>
+                        <button class="btn btn-sm btn-primary" @onclick="(() => NewNodeAtBottom(STEP))">
+                            Add Step
+                        </button>
+                    </div>
+                }
             </div>
         </div>
     }
@@ -89,6 +149,8 @@
 
 @code {
     private bool _isSidebarOpen;
+    private string? _uniquenessError;
+    private WorkInstructionImportResolutionResult? _importResolutionError;
     
     private bool HasInstruction => WorkInstructionEditorService.Current != null;
 
@@ -161,18 +223,27 @@
 
         await OnListChanged(null);
 
+        _uniquenessError = null;
+        _importResolutionError = null;
+
         try
         {
             bool isEditable = await WorkInstructionService.IsEditable(current.ToNewEntity());
+            bool isMinimal = WorkInstructionEditorService.IsMinimalEditingMode;
 
             bool success;
-            if (isEditable)
+
+            if (isEditable || isMinimal)
             {
+                // Minimal mode: save in place with restricted node sync (handled server-side by the updater).
+                // Full edit mode: normal in-place save.
                 success = await WorkInstructionEditorService.SaveAsync();
                 if (success)
-                    ToastService.ShowSuccess("Work Instruction updated successfully.");
+                    ToastService.ShowSuccess(isMinimal
+                        ? "Work Instruction updated (minimal edit — structural changes are preserved)."
+                        : "Work Instruction updated successfully.");
                 else
-                    ToastService.ShowError("Unable to save Work Instruction. Please ensure Title and Version are unique.");
+                    ToastService.ShowError("Unable to save Work Instruction. Please try again.");
             }
             else
             {
@@ -186,34 +257,20 @@
                 }
                 else
                 {
-                    // Create new version, then save
+                    // WI has logs and is not in minimal-mode (e.g. a CreateNewVersion load) — create version.
                     await WorkInstructionEditorService.LoadForNewVersionFromCurrentAsync();
-
                     success = await WorkInstructionEditorService.SaveAsync();
 
                     if (success)
                     {
                         ToastService.ShowSuccess("New version of Work Instruction created successfully.");
 
-                        if (WorkInstructionEditorService.Current != null)
-                        {
-                            // Ensure Current.id has a value before calling LoadForEditAsync
-                            if (!WorkInstructionEditorService.Current.Id.HasValue)
-                            {
-                                // Should never happen after SaveAsync, but handle just in case
-                                WorkInstructionEditorService.Reset();
-                                ToastService.ShowWarning("The new version was created but could not be loaded for editing.");
-                            }
-                            else
-                            {
-                                await WorkInstructionEditorService.LoadForEditAsync(
-                                    WorkInstructionEditorService.Current.Id.Value
-                                );
-                            }
-                        }
+                        if (WorkInstructionEditorService.Current?.Id.HasValue == true)
+                            await WorkInstructionEditorService.LoadForEditAsync(WorkInstructionEditorService.Current.Id.Value);
                         else
                         {
                             WorkInstructionEditorService.Reset();
+                            ToastService.ShowWarning("The new version was created but could not be loaded for editing.");
                         }
                     }
                     else
@@ -225,14 +282,21 @@
 
             if (success)
             {
-                // Refresh all latest work instructions list after save
                 AllWorkInstructions = await WorkInstructionService.GetAllLatestSummariesAsync();
-                
-                AllProducts = (await ProductService.GetAllDetailsAsync())
-                    .Where(p => p.IsActive)
-                    .ToList();
+                AllProducts = (await ProductService.GetAllDetailsAsync()).Where(p => p.IsActive).ToList();
                 StateHasChanged();
             }
+        }
+        catch (WorkInstructionNotUniqueException ex)
+        {
+            _uniquenessError = ex.Message;
+            StateHasChanged();
+        }
+        catch (WorkInstructionImportReferenceException ex)
+        {
+            _importResolutionError = ex.Result;
+            ToastService.ShowError("Cannot save: this work instruction references parts or products that do not exist.");
+            StateHasChanged();
         }
         catch (Exception ex)
         {
@@ -469,6 +533,8 @@
     private async Task OnWorkInstructionSelected(int instructionId)
     {
         SelectedWorkInstructionId = instructionId;
+        _uniquenessError = null;
+        _importResolutionError = null;
 
         if (instructionId > 0)
         {

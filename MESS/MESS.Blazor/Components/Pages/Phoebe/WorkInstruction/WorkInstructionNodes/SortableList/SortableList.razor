@@ -75,6 +75,13 @@
     public bool Sort { get; set; } = true;
 
     /// <summary>
+    /// When <c>true</c>, Sortable.js is not initialized and drag-and-drop is fully disabled.
+    /// Use this in Minimal Editing Mode to prevent accidental reordering.
+    /// </summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    /// <summary>
     /// CSS selector for the drag handle within each item.
     /// </summary>
     [Parameter]
@@ -99,7 +106,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!initialized)
+        if (!initialized && !Disabled)
         {
             try
             {

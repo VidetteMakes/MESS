@@ -1,8 +1,11 @@
-﻿using MESS.Services.DTOs.ProductionLogs.Batch;
+using MESS.Services.DTOs.ProductionLogs.Batch;
 using MESS.Services.DTOs.ProductionLogs.Archive;
 using MESS.Services.DTOs.ProductionLogs.CreateRequest;
+using MESS.Services.DTOs.ProductionLogs.Delete;
 using MESS.Services.DTOs.ProductionLogs.Detail;
+using MESS.Services.DTOs.ProductionLogs.Export;
 using MESS.Services.DTOs.ProductionLogs.Form;
+using MESS.Services.DTOs.ProductionLogs.Import;
 using MESS.Services.DTOs.ProductionLogs.Summary;
 using MESS.Services.DTOs.ProductionLogs.UpdateRequest;
 
@@ -179,5 +182,38 @@ public interface IProductionLogService
     /// The task result contains <c>true</c> if the log was found and successfully deleted; otherwise, <c>false</c>.
     /// </returns>
     Task<bool> DeleteByWorkInstructionAsync(WorkInstruction workInstruction);
+
+    // ── Export / Import / Bulk-Delete ────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a full export DTO for the production logs matching <paramref name="query"/>.
+    /// </summary>
+    /// <param name="query">Archive filters to scope the export.</param>
+    /// <param name="exportedBy">Username of the person requesting the export.</param>
+    /// <exception cref="InvalidOperationException">Thrown when the result set exceeds 10,000 rows.</exception>
+    Task<ProductionLogExportDto> GetExportAsync(ProductionLogArchiveQuery query, string exportedBy);
+
+    /// <summary>
+    /// Validates an import payload against the current database without writing any data.
+    /// Returns all errors found (not just the first).
+    /// </summary>
+    Task<ProductionLogImportValidationResult> ValidateImportAsync(ProductionLogExportDto import);
+
+    /// <summary>
+    /// Imports the production logs in <paramref name="import"/> into the database.
+    /// Calls <see cref="ValidateImportAsync"/> internally; throws if invalid.
+    /// Wraps all inserts in a transaction; rolls back on any error.
+    /// Skips logs whose ExternalId already exists (returns them in the result).
+    /// </summary>
+    Task<ProductionLogImportResult> ImportAsync(ProductionLogExportDto import, string importedBy);
+
+    /// <summary>
+    /// Hard-deletes the specified production logs, writes a <c>ProductionLogDeletionAudit</c> record,
+    /// and returns the outcome.
+    /// </summary>
+    /// <param name="ids">IDs of the logs to delete.</param>
+    /// <param name="deletedBy">Username performing the deletion.</param>
+    /// <param name="exportFilename">Filename of the pre-delete export (used for the audit record).</param>
+    Task<ProductionLogBulkDeleteResult> DeleteManyAsync(List<int> ids, string deletedBy, string exportFilename);
 
 }

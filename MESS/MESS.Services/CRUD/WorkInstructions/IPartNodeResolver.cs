@@ -34,5 +34,20 @@ namespace MESS.Services.CRUD.WorkInstructions
         Task ResolvePendingNodesAsync(
             ApplicationContext context,
             IEnumerable<WorkInstructionNode> nodes);
+
+        /// <summary>
+        /// Resolves pending <see cref="PartNode"/> entities by matching them to existing
+        /// <see cref="PartDefinition"/>s only — never creating new parts. Each matched node has its
+        /// <see cref="PartNode.PartDefinitionId"/> set; unmatched nodes are returned for error reporting.
+        /// </summary>
+        /// <param name="context">The active context used for lookups.</param>
+        /// <param name="nodes">The work instruction nodes to resolve (only <see cref="PartNode"/>s are considered).</param>
+        /// <returns>
+        /// A list of <c>(context, partName)</c> tuples — one per node whose part could not be found.
+        /// The context labels where the missing part appears in the instruction.
+        /// </returns>
+        Task<List<(string Context, string PartName)>> LookupPendingNodesAsync(
+            ApplicationContext context,
+            IEnumerable<WorkInstructionNode> nodes);
     }
 }

@@ -1,8 +1,10 @@
-﻿@page "/log-archive"
+@page "/log-archive"
 @using MESS.Blazor.Components.Layout
 @using MESS.Blazor.Components.Dialogs
+@using MESS.Blazor.Components.Dialogs.ProductionLog
 @using MESS.Services.CRUD.ProductionLogs
 @using MESS.Services.DTOs.ProductionLogs.Archive
+@using MESS.Services.UI.ExportToken
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
@@ -11,8 +13,10 @@
 @layout PhoebeLayout
 @inject NavigationManager NavManager
 @inject IProductionLogService ProductionLogService
+@inject IExportTokenService ExportTokenService
 @inject Microsoft.FluentUI.AspNetCore.Components.IDialogService DialogService
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthProvider
 @attribute [Authorize(Roles = "Administrator")]
 
 <PageTitle>Log Archives</PageTitle>
@@ -113,6 +117,11 @@
         width: 260px;
         z-index: 4;
     }
+
+    .col-select {
+        width: 38px;
+        text-align: center;
+    }
 </style>
 
 <ErrorBoundary>
@@ -128,19 +137,55 @@
                         <button class="btn btn-sm btn-outline-secondary text-start" @onclick="@(() => NavManager.NavigateTo("/"))">
                             <i class="bi bi-arrow-left"/>To Login
                         </button>
-                    </div>                    
+                    </div>
                 </div>
             </NotAuthorized>
             <Authorized>
+                @* Toolbar *@
                 <div class="d-flex flex-wrap align-items-center gap-2 my-2">
                     <h3 class="m-0">Log Archive</h3>
                     <div class="flex-grow-1"></div>
+
+                    @* Export limit warning *@
+                    @if (_exportLimitWarning != null)
+                    {
+                        <div class="alert alert-warning py-1 px-2 mb-0 small">@_exportLimitWarning</div>
+                    }
+
+                    @* Delete result / error *@
+                    @if (_deleteError != null)
+                    {
+                        <div class="alert alert-danger py-1 px-2 mb-0 small">@_deleteError</div>
+                    }
+                    @if (_deleteSuccess != null)
+                    {
+                        <div class="alert alert-success py-1 px-2 mb-0 small">@_deleteSuccess</div>
+                    }
+
                     @if (HasActiveFilters)
                     {
                         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearAllFiltersAsync" disabled="@IsLoading">
                             Clear all filters
                         </button>
                     }
+
+                    @* Import link *@
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="@(() => NavManager.NavigateTo("/log-archive/import"))">
+                        <i class="bi bi-upload me-1"></i>Import Logs
+                    </button>
+
+                    @* Export button *@
+                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenExportDialog" disabled="@(IsLoading || _total == 0)">
+                        <i class="bi bi-download me-1"></i>Export
+                    </button>
+
+                    @* Delete button — Administrators only, enabled when rows selected *@
+                    <button type="button" class="btn btn-sm btn-outline-danger"
+                            @onclick="OpenPreDeleteDialog"
+                            disabled="@(IsLoading || _selectedIds.Count == 0)">
+                        <i class="bi bi-trash me-1"></i>Delete (@_selectedIds.Count)
+                    </button>
+
                     <input type="text"
                            class="form-control w-auto"
                            placeholder="Search..."
@@ -197,6 +242,13 @@
                     <table class="table table-striped table-hover mb-0 log-archive-table">
                         <thead>
                         <tr>
+                            <th class="col-select">
+                                <input type="checkbox"
+                                       class="form-check-input"
+                                       title="Select all on this page"
+                                       checked="@AllPageSelected"
+                                       @onchange="ToggleSelectAll" />
+                            </th>
                             @if (IsColumnVisible(ColumnLogId)) { <th>@SortButton("Log #", "logId")</th> }
                             @if (IsColumnVisible(ColumnAttemptId)) { <th>@SortButton("Attempt ID", "attemptId")</th> }
                             @if (IsColumnVisible(ColumnStatus)) { <th>@SortButton("Status", "status")</th> }
@@ -211,6 +263,7 @@
                             @if (IsColumnVisible(ColumnActions)) { <th class="log-archive-actions">Actions</th> }
                         </tr>
                         <tr>
+                            <th class="col-select"></th>
                             @if (IsColumnVisible(ColumnLogId))
                             {
                                 <th class="log-filter-cell">
@@ -250,12 +303,18 @@
                         @if (_rows.Count == 0 && !IsLoading && string.IsNullOrWhiteSpace(_errorMessage))
                         {
                             <tr>
-                                <td colspan="@VisibleColumnCount" class="text-center text-muted py-4">No logs found.</td>
+                                <td colspan="@(VisibleColumnCount + 1)" class="text-center text-muted py-4">No logs found.</td>
                             </tr>
                         }
                         @foreach (var log in _rows)
                         {
-                            <tr>
+                            <tr class="@(_selectedIds.Contains(log.ProductionLogId) ? "table-warning" : "")">
+                                <td class="col-select">
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           checked="@_selectedIds.Contains(log.ProductionLogId)"
+                                           @onchange="e => ToggleRow(log.ProductionLogId, (bool)e.Value!)" />
+                                </td>
                                 @if (IsColumnVisible(ColumnLogId)) { <td>@log.ProductionLogId</td> }
                                 @if (IsColumnVisible(ColumnAttemptId)) { <td>@(log.AttemptId?.ToString() ?? "-")</td> }
                                 @if (IsColumnVisible(ColumnStatus)) { <td>@log.Status</td> }
@@ -305,6 +364,24 @@
                         }
                     </select>
                 </div>
+
+                @* Dialogs *@
+                <ExportDialog @bind-Visible="_showExportDialog"
+                              Query="BuildQuery()"
+                              ExportedBy="@_currentUsername"
+                              OnExportComplete="OnExportComplete" />
+
+                <PreDeleteExportDialog @bind-Visible="_showPreDeleteDialog"
+                                       LogCount="@_selectedIds.Count"
+                                       SelectedLogIds="@_selectedIds.ToList()"
+                                       ExportedBy="@_currentUsername"
+                                       Query="BuildQuery()"
+                                       OnExportConfirmed="OpenConfirmDeleteDialog" />
+
+                <ConfirmDeleteDialog @bind-Visible="_showConfirmDeleteDialog"
+                                     LogCount="@_selectedIds.Count"
+                                     ExportFilename="@_exportFilenameForDelete"
+                                     OnConfirmed="ExecuteDeleteAsync" />
             </Authorized>
         </AuthorizeView>
     </ChildContent>
@@ -365,14 +442,29 @@
     private string _pageInput = "1";
     private string _sortBy = "createdOn";
     private string _sortDir = "desc";
+    private string _currentUsername = string.Empty;
+
+    // Selection
+    private readonly HashSet<int> _selectedIds = [];
+    private bool AllPageSelected => _rows.Count > 0 && _rows.All(r => _selectedIds.Contains(r.ProductionLogId));
+
+    // Export / Delete dialog state
+    private bool _showExportDialog;
+    private bool _showPreDeleteDialog;
+    private bool _showConfirmDeleteDialog;
+    private string? _exportLimitWarning;
+    private string? _deleteError;
+    private string? _deleteSuccess;
+    private string _exportFilenameForDelete = string.Empty;
 
     private int VisibleColumnCount => Math.Max(1, _columnVisibility.Count(kvp => kvp.Value));
     private bool HasActiveFilters => !string.IsNullOrWhiteSpace(SearchString) || _filters.HasAny;
 
-    
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthProvider.GetAuthenticationStateAsync();
+        _currentUsername = auth.User.Identity?.Name ?? "system";
         ReadUrlState();
         _filterOptions = await ProductionLogService.GetArchiveFilterOptionsAsync();
         await LoadPageAsync(updateUrl: false);
@@ -411,6 +503,10 @@
             _pageSize = result.PageSize;
             _totalPages = result.TotalPages;
             _pageInput = _page.ToString();
+
+            // Remove selected IDs that are no longer on this page
+            var pageIds = _rows.Select(r => r.ProductionLogId).ToHashSet();
+            _selectedIds.RemoveWhere(id => !pageIds.Contains(id));
 
             if (updateUrl)
                 UpdateUrl();
@@ -500,6 +596,92 @@
         _page = 1;
         await LoadPageAsync();
     }
+
+    // ── Selection ─────────────────────────────────────────────────────────────
+
+    private void ToggleRow(int id, bool selected)
+    {
+        if (selected) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+        _deleteError = null;
+        _deleteSuccess = null;
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        if ((bool)e.Value!)
+        {
+            foreach (var r in _rows) _selectedIds.Add(r.ProductionLogId);
+        }
+        else
+        {
+            foreach (var r in _rows) _selectedIds.Remove(r.ProductionLogId);
+        }
+        _deleteError = null;
+        _deleteSuccess = null;
+    }
+
+    // ── Export ────────────────────────────────────────────────────────────────
+
+    private void OpenExportDialog()
+    {
+        _exportLimitWarning = null;
+        _showExportDialog = true;
+    }
+
+    private void OnExportComplete()
+    {
+        // Token was already recorded inside ExportDialog
+    }
+
+    // ── Delete flow ──────────────────────────────────────────────────────────
+
+    private void OpenPreDeleteDialog()
+    {
+        _deleteError = null;
+        _deleteSuccess = null;
+        _showPreDeleteDialog = true;
+    }
+
+    private void OpenConfirmDeleteDialog()
+    {
+        if (!ExportTokenService.TryGetValidToken(out var filename))
+        {
+            _deleteError = "Export token expired or missing. Please export the logs again before deleting.";
+            return;
+        }
+        _exportFilenameForDelete = filename ?? string.Empty;
+        _showConfirmDeleteDialog = true;
+    }
+
+    private async Task ExecuteDeleteAsync()
+    {
+        if (!ExportTokenService.TryGetValidToken(out var filename))
+        {
+            _deleteError = "Export token expired. Please export and try again.";
+            return;
+        }
+
+        var result = await ProductionLogService.DeleteManyAsync(
+            _selectedIds.ToList(),
+            _currentUsername,
+            filename ?? string.Empty);
+
+        ExportTokenService.Invalidate();
+
+        if (result.Success)
+        {
+            _deleteSuccess = $"{result.DeletedCount} log(s) deleted successfully.";
+            _selectedIds.Clear();
+            await LoadPageAsync(updateUrl: false);
+        }
+        else
+        {
+            _deleteError = result.ErrorMessage ?? "Deletion failed.";
+        }
+    }
+
+    // ── Render helpers ───────────────────────────────────────────────────────
 
     private RenderFragment SortButton(string label, string sortKey) => builder =>
     {
@@ -736,10 +918,10 @@
         => query.TryGetValue(key, out var value) ? value.ToString() : fallback;
 
     private static DateTimeOffset? ParseDateStart(string? value)
-        => DateTime.TryParse(value, out var date) ? new DateTimeOffset(date.Date) : null;
+        => DateTime.TryParse(value, out var date) ? new DateTimeOffset(date.Date, TimeSpan.Zero) : null;
 
     private static DateTimeOffset? ParseDateEnd(string? value)
-        => DateTime.TryParse(value, out var date) ? new DateTimeOffset(date.Date.AddDays(1).AddTicks(-1)) : null;
+        => DateTime.TryParse(value, out var date) ? new DateTimeOffset(date.Date.AddDays(1).AddTicks(-1), TimeSpan.Zero) : null;
 
     private sealed record ColumnDefinition(string Key, string Label);
 

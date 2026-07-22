@@ -1,0 +1,114 @@
+@using MESS.Services.DTOs.ProductionLogs.Archive
+@using MESS.Services.DTOs.ProductionLogs.Export
+@using MESS.Services.CRUD.ProductionLogs
+@using MESS.Services.Files.ProductionLogs
+@using MESS.Services.UI.ExportToken
+@using System.Text.Json
+@inject IProductionLogService ProductionLogService
+@inject IProductionLogExcelService ExcelService
+@inject IExportTokenService ExportTokenService
+@inject IJSRuntime JS
+
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.45);" @onclick="OnBackdropClick">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content border-danger">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill me-2"></i>Export Required Before Deleting</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="Cancel" disabled="@_busy"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_error != null)
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+                    <p>You are about to permanently delete <strong>@LogCount</strong> production log(s).</p>
+                    <p>You must export these logs before proceeding. This creates an audit trail and allows re-import if needed.</p>
+                    @if (_busy)
+                    {
+                        <div class="d-flex align-items-center gap-2 text-muted">
+                            <span class="spinner-border spinner-border-sm"></span>
+                            <span>Preparing export...</span>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" @onclick="Cancel" disabled="@_busy">Cancel</button>
+                    <button type="button" class="btn btn-danger btn-sm" @onclick="ExportAndContinueAsync" disabled="@_busy">
+                        <i class="bi bi-download me-1"></i>Export &amp; Continue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public int LogCount { get; set; }
+    [Parameter] public required List<int> SelectedLogIds { get; set; }
+    [Parameter] public required string ExportedBy { get; set; }
+    [Parameter] public required ProductionLogArchiveQuery Query { get; set; }
+    [Parameter] public EventCallback OnExportConfirmed { get; set; }
+
+    private bool _busy;
+    private string? _error;
+
+    private async Task ExportAndContinueAsync()
+    {
+        _error = null;
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            var filteredQuery = new ProductionLogArchiveQuery
+            {
+                Page = 1,
+                PageSize = 10_000,
+                FilterLogId = SelectedLogIds.Count == 1 ? SelectedLogIds[0] : null,
+                FilterProduct = Query.FilterProduct,
+                FilterWorkInstruction = Query.FilterWorkInstruction,
+                FilterCreatedBy = Query.FilterCreatedBy,
+                FilterCreatedOnFrom = Query.FilterCreatedOnFrom,
+                FilterCreatedOnTo = Query.FilterCreatedOnTo
+            };
+
+            var export = await ProductionLogService.GetExportAsync(filteredQuery, ExportedBy);
+            var json = JsonSerializer.Serialize(export, new JsonSerializerOptions { WriteIndented = true });
+            var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+            var date = DateTimeOffset.Now.ToString("yyyy-MM-dd");
+            var filename = $"production-logs-pre-delete_{date}.json";
+
+            using var stream = new MemoryStream(bytes);
+            using var streamRef = new DotNetStreamReference(stream);
+            await JS.InvokeVoidAsync("downloadFileFromStream", filename, streamRef);
+
+            ExportTokenService.RecordExport(filename);
+
+            Visible = false;
+            await VisibleChanged.InvokeAsync(false);
+
+            if (OnExportConfirmed.HasDelegate)
+                await OnExportConfirmed.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        Visible = false;
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private Task OnBackdropClick() => Cancel();
+}
